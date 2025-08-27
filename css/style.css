@@ -1,0 +1,104 @@
+/* Grundlagen */
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+:root{
+  --bg:#f4f6fa;
+  --card-bg:#fff;
+  --border:#d1d8e0;
+  --text:#222;
+  --muted:#555;
+  --radius:8px;
+  --shadow:0 8px 32px rgba(0,0,0,.08);
+  --primary:#007bff;
+
+  /* Nutri-Score-Palette */
+  --grade-A:#1e6e3a;   /* dunkles Grün */
+  --grade-B:#78bf31;   /* mittel Grün */
+  --grade-C:#f5d443;   /* Gelb */
+  --grade-D:#f08b1d;   /* Orange */
+  --grade-E:#e53935;   /* Rot */
+  --grade-F:#721c24;   /* bleibt gleich */
+}
+
+body{
+  font-family:Arial,system-ui,sans-serif;
+  line-height:1.5;
+  margin:0; padding:1em;
+  background:var(--bg); color:var(--text);
+}
+.container{ max-width:1000px; margin:0 auto; padding:0 1rem; }
+h1{ margin:.25em 0 .5em; font-size:2.5rem; font-weight:700; text-align:center; }
+
+.score-card{
+  background:var(--card-bg);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:1.75rem;
+  box-shadow:var(--shadow);
+  display:flex; flex-direction:column; gap:1.5rem;
+}
+
+.top-row{
+  display:flex; flex-wrap:wrap; gap:2rem;
+  justify-content:space-between; align-items:flex-start;
+}
+.score-block{ display:flex; flex-direction:column; gap:4px; min-width:150px; }
+.score-label,.grade-label{ font-size:1rem; font-weight:600; }
+.score-value{ font-size:3rem; font-weight:700; line-height:1; }
+
+.grade-block{ display:flex; flex-direction:column; align-items:flex-end; gap:6px; min-width:120px; }
+
+.progress-wrapper{ width:100%; }
+.progress-container{
+  width:100%; background:#eee; border-radius:6px; overflow:hidden; height:1.5em; margin-top:.5em; position:relative;
+}
+.progress-bar{
+  height:100%; display:flex; align-items:center; justify-content:center;
+  font-weight:bold; color:#fff; transition:width .6s ease, background .3s ease;
+  white-space:nowrap; padding:0 .5em; min-width:40px; border-radius:4px;
+}
+
+/* Fortschrittsfarben */
+.progress-bar.grade-A{ background:var(--grade-A); }
+.progress-bar.grade-B{ background:var(--grade-B); }
+.progress-bar.grade-C{ background:var(--grade-C); color:#212529; }
+.progress-bar.grade-D{ background:var(--grade-D); }
+.progress-bar.grade-E{ background:var(--grade-E); }
+.progress-bar.grade-F{ background:var(--grade-F); }
+
+/* Badge */
+.grade-badge{
+  display:inline-block; padding:.75rem 1rem; border-radius:8px;
+  font-size:1.5rem; font-weight:bold; min-width:64px; text-align:center;
+}
+.grade-badge.grade-A{ background:var(--grade-A); color:#fff; }
+.grade-badge.grade-B{ background:var(--grade-B); color:#fff; }
+.grade-badge.grade-C{ background:var(--grade-C); color:#212529; }
+.grade-badge.grade-D{ background:var(--grade-D); color:#212529; }
+.grade-badge.grade-E{ background:var(--grade-E); color:#fff; }
+.grade-badge.grade-F{ background:var(--grade-F); color:#fff; }
+
+/* Details */
+.section-title{
+  font-size:1.25rem; font-weight:600; margin:0; padding-bottom:.25rem; border-bottom:1px solid #e2e8f0;
+}
+.meta-grid{ display:flex; flex-wrap:wrap; gap:2rem; margin-top:.5rem; }
+.meta-col{ flex:1 1 220px; min-width:180px; }
+.label-key{ font-weight:600; }
+.short-finding{ margin-top:1rem; }
+.short-finding div{ margin-bottom:.35rem; }
+
+/* Button */
+.btn-primary{
+  display:inline-block; padding:.75rem 2rem; background:var(--primary); color:#fff;
+  border-radius:6px; text-decoration:none; font-size:1rem; font-weight:600; border:none; cursor:pointer; margin-top:1rem;
+}
+.btn-primary:hover{ background:#0056b3; }
+
+/* Responsive */
+@media (max-width:800px){
+  .top-row{ flex-direction:column; }
+  .grade-block{ align-items:flex-start; }
+}
