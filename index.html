@@ -1,35 +1,71 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8" />
-  <title>EAZY Score Ergebnis</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <link rel="stylesheet" href="css/style.css" />
+  <meta charset="utf-8">
+  <title>EAZY Score – Audit</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="./css/style.css" rel="stylesheet">
+  <style>
+    /* kleine Form-Helfer, falls dein style.css das nicht hat */
+    form .question{display:flex;gap:12px;align-items:center;margin:.5rem 0;flex-wrap:wrap}
+    .inline-label{min-width:280px;font-weight:600}
+    .inline-field select,.inline-field input{padding:.5rem;border:1px solid #ccc;border-radius:6px}
+    fieldset{border:1px solid #e2e8f0;border-radius:8px;padding:1rem;margin:1rem 0}
+    legend{font-weight:700}
+    .hidden{display:none}
+    .footer{display:flex;justify-content:flex-start}
+  </style>
 </head>
 <body>
   <div class="container">
     <h1>EAZY Score</h1>
 
-    <div class="score-card">
+    <!-- FORMULAR -->
+    <form id="auditForm" novalidate>
+      <fieldset>
+        <legend>App-Details</legend>
+        <div class="fieldstack">
+          <label for="appName">App-Name</label>
+          <input id="appName" name="appName" placeholder="z. B. BeispielApp">
+        </div>
+        <div class="fieldstack">
+          <label for="version">Version</label>
+          <input id="version" name="version" placeholder="z. B. 1.0.0">
+        </div>
+        <div class="fieldstack">
+          <label for="category">Kategorie</label>
+          <input id="category" name="category" placeholder="z. B. Gesundheit">
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Fragen (Ja / Nein / Unbekannt)</legend>
+        <div id="questions"></div>
+      </fieldset>
+
+      <div class="footer">
+        <button type="submit" class="btn-primary">Bewerten</button>
+      </div>
+    </form>
+
+    <!-- ERGEBNIS -->
+    <section id="resultSection" class="score-card hidden" aria-live="polite">
       <div class="top-row">
         <div class="score-block">
           <div class="score-label">Gesamt-Score</div>
-          <div id="scoreValue" class="score-value">59%</div>
-          <div class="small-meta">
-            <span id="metaCorrect">25 von 37 richtigen Antworten</span>
-          </div>
+          <div id="scoreValue" class="score-value">0%</div>
+          <div class="small-meta"><span id="correctMeta">0 von 0 richtigen Antworten</span></div>
         </div>
-
         <div class="grade-block">
           <div class="grade-label">Note</div>
-          <div id="gradeBadge" class="grade-badge grade-C">C</div>
+          <div id="gradeBadge" class="grade-badge grade-F">F</div>
         </div>
       </div>
 
       <div class="progress-wrapper" aria-label="Score Fortschritt">
         <div class="progress-container">
-          <div id="progressBar" class="progress-bar grade-C" style="width:59%;">
-            <span id="progressText">25/37</span>
+          <div id="progressBar" class="progress-bar grade-F" style="width:0%;">
+            <span id="progressText">0/0</span>
           </div>
         </div>
       </div>
@@ -37,86 +73,22 @@
       <div class="meta-grid">
         <div class="meta-col">
           <div class="section-title">App-Details</div>
-          <div><span class="label-key">App-Name:</span> <span id="appName">BeispielApp</span></div>
-          <div><span class="label-key">Version:</span> <span id="appVersion">1.0</span></div>
-          <div><span class="label-key">Kategorie:</span> <span id="appCategory">Test</span></div>
-          <div><span class="label-key">Audit-Datum:</span> <span id="auditDate">06.08.2025</span></div>
+          <div><span class="label-key">App-Name: </span><span id="rAppName">–</span></div>
+          <div><span class="label-key">Version: </span><span id="rVersion">–</span></div>
+          <div><span class="label-key">Kategorie: </span><span id="rCategory">–</span></div>
         </div>
-
         <div class="meta-col">
           <div class="section-title">Kurzbefunde</div>
-          <div class="short-finding">
-            <div><span class="label-key">Einwilligung des Nutzers abgefragt:</span> <span id="consentAsked">Ja</span></div>
-            <div><span class="label-key">Nur notwendige Berechtigungen:</span> <span id="onlyPerms">Ja</span></div>
-            <div><span class="label-key">Tracking verwendet:</span> <span id="trackingUsed">Nein</span></div>
-          </div>
+          <div id="shortFindings"></div>
         </div>
       </div>
 
-      <div class="footer" style="justify-content:center">
-        <a href="#" class="btn-primary">Neu bewerten</a>
+      <div class="footer">
+        <button id="restartBtn" class="btn-primary" type="button">Neu bewerten</button>
       </div>
-    </div>
+    </section>
   </div>
 
-  <script>
-    // --- Hilfsfunktionen ---
-    function $(id){ return document.getElementById(id); }
-    function clamp(n,min,max){ return Math.max(min, Math.min(max, n)); }
-    function computeGrade(score){
-      if (score >= 90) return 'A';
-      if (score >= 80) return 'B';
-      if (score >= 70) return 'C';
-      if (score >= 60) return 'D';
-      if (score >= 50) return 'E';
-      return 'F';
-    }
-
-    // URL-Parameter lesen
-    const p = new URLSearchParams(location.search);
-    const total = Number(p.get('total')) || 37;
-    const correct = Number(p.get('correct')) || 25;
-    let score = p.has('score') ? Number(p.get('score')) : Math.round((correct/total)*100);
-    score = clamp(score, 0, 100);
-
-    const gradeParam = p.get('grade');
-    const grade = (gradeParam && /^[A-F]$/i.test(gradeParam)) ? gradeParam.toUpperCase() : computeGrade(score);
-
-    // App-Infos optional per Param
-    const appName = p.get('appName') || 'BeispielApp';
-    const version = p.get('version') || '1.0';
-    const category = p.get('category') || 'Test';
-    const auditDate = p.get('auditDate') || new Date().toLocaleDateString('de-DE');
-
-    const consent = p.get('consent') || 'Ja';
-    const onlyPerms = p.get('onlyPerms') || 'Ja';
-    const tracking = p.get('tracking') || 'Nein';
-
-    // DOM aktualisieren
-    $('scoreValue').textContent = score + '%';
-    $('metaCorrect').textContent = `${correct} von ${total} richtigen Antworten`;
-    $('progressText').textContent = `${correct}/${total}`;
-
-    const bar = $('progressBar');
-    bar.style.width = score + '%';
-
-    // alte grade-X Klassen entfernen
-    ['A','B','C','D','E','F'].forEach(g=>{
-      bar.classList.remove('grade-' + g);
-      $('gradeBadge').classList.remove('grade-' + g);
-    });
-    bar.classList.add('grade-' + grade);
-    $('gradeBadge').classList.add('grade-' + grade);
-    $('gradeBadge').textContent = grade;
-
-    $('appName').textContent = appName;
-    $('appVersion').textContent = version;
-    $('appCategory').textContent = category;
-    $('auditDate').textContent = auditDate;
-
-    $('consentAsked').textContent = consent;
-    $('onlyPerms').textContent = onlyPerms;
-    $('trackingUsed').textContent = tracking;
-  </script>
+  <script src="./js/app.js"></script>
 </body>
 </html>
