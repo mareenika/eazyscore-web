@@ -20,6 +20,17 @@
   <div class="container">
     <h1>EAZY Score</h1>
 
+    <!-- LOGIN -->
+    <div style="margin:1rem 0; border:1px solid #ddd; padding:1rem; border-radius:8px;">
+      <label for="emailInput">E-Mail:
+        <input id="emailInput" type="email" placeholder="you@example.com">
+      </label>
+      <button id="btnLoginEmail" type="button">Einloggen per E-Mail</button>
+      <button id="btnLoginGitHub" type="button">Mit GitHub einloggen</button>
+      <span id="loginStatus" style="margin-left:1rem;"></span>
+    </div>
+    <!-- ENDE LOGIN -->
+
     <!-- FORMULAR -->
     <form id="auditForm" novalidate>
       <fieldset>
@@ -90,5 +101,36 @@
   </div>
 
   <script src="./js/app.js"></script>
+
+  <!-- direkt danach das Supabase-Script -->
+  <script type="module">
+    import { createClient } from "https://esm.sh/@supabase/supabase-js";
+
+    const SUPABASE_URL = "https://DEIN-PROJEKT.supabase.co";   // <- ersetzen
+    const SUPABASE_ANON = "ey...DEIN_ANON_KEY...";             // <- ersetzen
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
+
+    // Login per E-Mail
+    document.getElementById('btnLoginEmail').addEventListener('click', async () => {
+      const email = document.getElementById('emailInput').value.trim();
+      const { error } = await supabase.auth.signInWithOtp({ email });
+      alert(error ? error.message : "Check deine E-Mail (Magic Link).");
+    });
+
+    // Login per GitHub
+    document.getElementById('btnLoginGitHub').addEventListener('click', async () => {
+      const { error } = await supabase.auth.signInWithOAuth({ provider: "github" });
+      if (error) alert(error.message);
+    });
+
+    // Status anzeigen
+    async function updateStatus() {
+      const { data: { user } } = await supabase.auth.getUser();
+      document.getElementById('loginStatus').textContent =
+        user ? `Eingeloggt: ${user.email}` : "Nicht eingeloggt";
+    }
+    updateStatus();
+  </script>
+  
 </body>
 </html>
