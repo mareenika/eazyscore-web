@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="utf-8">
-  <title>EAZY Score </title>
+  <title>EAZY Score</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link href="./css/style.css" rel="stylesheet">
   <style>
@@ -100,14 +100,15 @@
     </section>
   </div>
 
+  <!-- Dein App-Logic-File -->
   <script src="./js/app.js"></script>
 
-  <!-- direkt danach das Supabase-Script -->
+  <!-- Supabase-Login + Persistenz -->
   <script type="module">
     import { createClient } from "https://esm.sh/@supabase/supabase-js";
 
-    const SUPABASE_URL = "https://lhdztkfvrnsqfnbqybfq.supabase.co";   // <- ersetzen
-    const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxoZHp0a2Z2cm5zcWZuYnF5YmZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTczMjIxMjMsImV4cCI6MjA3Mjg5ODEyM30.81BVX5zf_WxE3RdTw32OttwsiMgDanXdNIkWeug-jUs";             // <- ersetzen
+    const SUPABASE_URL = "https://lhdztkfvrnsqfnbqybfq.supabase.co";
+    const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxoZHp0a2Z2cm5zcWZuYnF5YmZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTczMjIxMjMsImV4cCI6MjA3Mjg5ODEyM30.81BVX5zf_WxE3RdTw32OttwsiMgDanXdNIkWeug-jUs";
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
 
     // Login per E-Mail
@@ -123,14 +124,65 @@
       if (error) alert(error.message);
     });
 
-    // Status anzeigen
+    // Login-Status
     async function updateStatus() {
       const { data: { user } } = await supabase.auth.getUser();
       document.getElementById('loginStatus').textContent =
         user ? `Eingeloggt: ${user.email}` : "Nicht eingeloggt";
+      return user;
     }
     updateStatus();
+
+    // Status nach Auth-Änderung automatisch aktualisieren
+    supabase.auth.onAuthStateChange(() => updateStatus());
+
+    // ===== Supabase-Helfer =====
+    function slugify(s) {
+      return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+    }
+
+    async function getOrCreateApp({ bundleId, name, category }) {
+      let { data: apps, error } = await supabase
+        .from("apps").select("*").eq("bundle_id", bundleId).limit(1);
+      if (error) throw error;
+      if (apps?.length) return apps[0];
+
+      const { data, error: insErr } = await supabase
+        .from("apps").insert({ bundle_id: bundleId, name, category }).select().single();
+      if (insErr) throw insErr;
+      return data;
+    }
+
+    async function saveAssessment({ appId, answers, totalScore, grade }) {
+      const { error } = await supabase.from("assessments").insert({
+        app_id: appId,
+        answers,                 // YES/NO/UNKNOWN bleiben so gespeichert
+        total_score: totalScore,
+        grade
+      });
+      if (error) throw error;
+    }
+
+    // ===== Ergebnis aus app.js entgegennehmen und speichern =====
+    document.addEventListener('eazy:result', async (ev) => {
+      const user = await updateStatus();
+      if (!user) { alert("Bitte zuerst einloggen, dann speichern."); return; }
+
+      const { answers, score, grade, meta } = ev.detail;
+      const { appName, version, category } = meta;
+
+      // Fallback-Bundle-ID aus Name+Version
+      const bundleId = slugify(`${appName || 'unbenannte-app'}-${version || 'v1'}`);
+
+      try {
+        const app = await getOrCreateApp({ bundleId, name: appName || 'Unbenannte App', category });
+        await saveAssessment({ appId: app.id, answers, totalScore: score, grade });
+        console.log("Gespeichert:", { appId: app.id, score, grade });
+      } catch (e) {
+        console.error(e);
+        alert('Fehler beim Speichern: ' + (e?.message || e));
+      }
+    });
   </script>
-  
 </body>
 </html>
