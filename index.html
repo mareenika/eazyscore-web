@@ -111,16 +111,25 @@
     const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxoZHp0a2Z2cm5zcWZuYnF5YmZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTczMjIxMjMsImV4cCI6MjA3Mjg5ODEyM30.81BVX5zf_WxE3RdTw32OttwsiMgDanXdNIkWeug-jUs";
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
 
-    // Login per E-Mail
+    // Login per E-Mail (Magic Link)
     document.getElementById('btnLoginEmail').addEventListener('click', async () => {
       const email = document.getElementById('emailInput').value.trim();
-      const { error } = await supabase.auth.signInWithOtp({ email });
+      const { error } = await supabase.auth.signInWithOtp({ email, options: {
+      emailRedirectTo: 'https://mareenika.github.io/eazyscore-web/' // <- Mein GitHub Pages Link
+    }                                                      
+    });
+      
       alert(error ? error.message : "Check deine E-Mail (Magic Link).");
     });
 
     // Login per GitHub
     document.getElementById('btnLoginGitHub').addEventListener('click', async () => {
-      const { error } = await supabase.auth.signInWithOAuth({ provider: "github" });
+      const { error } = await supabase.auth.signInWithOAuth({ provider: "github",
+       options: {
+      redirectTo: 'https://mareenika.github.io/eazyscore-web/' // <- Mein GitHub Pages Link
+    }                                                      
+                                                            
+    });
       if (error) alert(error.message);
     });
 
