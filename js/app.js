@@ -143,6 +143,22 @@ formEl.addEventListener('submit', (e) => {
 
   shortFindings.innerHTML = buildShortFindings(answers);
 
+  // >>> Supabase-Persistenz: Ergebnis an das Modul melden
+document.dispatchEvent(new CustomEvent('eazy:result', {
+  detail: {
+    answers,                // z.B. { q1: "YES", q2: "NO", ... }
+    score,                  // Prozent (0..100)
+    grade,                  // "A".."F"
+    meta: {
+      appName: (formData.get('appName') || '').trim(),
+      version: (formData.get('version') || '').trim(),
+      category: (formData.get('category') || '').trim()
+    }
+  }
+}));
+// <<< Ende Persistenz-Hook
+
+
   // Umschalten: Formular aus, Ergebnis an
   formEl.classList.add('hidden');
   resultSection.classList.remove('hidden');
