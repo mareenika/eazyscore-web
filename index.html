@@ -114,7 +114,7 @@
     document.getElementById('btnLoginEmail').addEventListener('click', async () => {
       const email = document.getElementById('emailInput').value.trim();
       const { error } = await supabase.auth.signInWithOtp({ email, options: {
-      emailRedirectTo: 'https://mareenika.github.io/eazyscore-web/auth/callback/' // <- Magic-Links immer auf der Callback-Seite
+      emailRedirectTo: 'https://mareenika.github.io/eazyscore-web/auth/callback/index.html' // <- Magic-Links immer auf der Callback-Seite
     }                                                      
     });
       
