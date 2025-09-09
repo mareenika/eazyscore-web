@@ -113,10 +113,12 @@
     // Login per E-Mail (Magic Link)
     document.getElementById('btnLoginEmail').addEventListener('click', async () => {
       const email = document.getElementById('emailInput').value.trim();
-      const { error } = await supabase.auth.signInWithOtp({ email, options: {
-      emailRedirectTo: 'https://mareenika.github.io/eazyscore-web/auth/callback/' // <- Magic-Links immer auf der Callback-Seite
-    }                                                      
-    });
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: 'https://mareenika.github.io/eazyscore-web/auth/callback/' // Callback-Seite
+        }
+      });
       
       alert(error ? error.message : "Check deine E-Mail (Magic Link).");
     });
@@ -124,8 +126,12 @@
     // Login-Status
     async function updateStatus() {
       const { data: { user } } = await supabase.auth.getUser();
-      document.getElementById('loginStatus').textContent =
-        user ? `Eingeloggt: ${user.email}` : "";
+      const el = document.getElementById('loginStatus');
+      if (user) {
+        el.textContent = `Eingeloggt: ${user.email}`;
+      } else {
+        el.textContent = ""; // bleibt leer wenn nicht eingeloggt
+      }
       return user;
     }
     updateStatus();
@@ -153,7 +159,7 @@
     async function saveAssessment({ appId, answers, totalScore, grade }) {
       const { error } = await supabase.from("assessments").insert({
         app_id: appId,
-        answers,                 // YES/NO/UNKNOWN bleiben so gespeichert
+        answers,                 
         total_score: totalScore,
         grade
       });
