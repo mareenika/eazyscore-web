@@ -26,7 +26,6 @@
         <input id="emailInput" type="email" placeholder="you@example.com">
       </label>
       <button id="btnLoginEmail" type="button">Einloggen per E-Mail</button>
-      <button id="btnLoginGitHub" type="button">Mit GitHub einloggen</button>
       <span id="loginStatus" style="margin-left:1rem;"></span>
     </div>
     <!-- ENDE LOGIN -->
@@ -121,18 +120,7 @@
       
       alert(error ? error.message : "Check deine E-Mail (Magic Link).");
     });
-
-    // Login per GitHub
-    document.getElementById('btnLoginGitHub').addEventListener('click', async () => {
-      const { error } = await supabase.auth.signInWithOAuth({ provider: "github",
-       options: {
-      redirectTo: 'https://mareenika.github.io/eazyscore-web/' // <- Mein GitHub Pages Link
-    }                                                      
-                                                            
-    });
-      if (error) alert(error.message);
-    });
-
+    
     // Login-Status
     async function updateStatus() {
       const { data: { user } } = await supabase.auth.getUser();
