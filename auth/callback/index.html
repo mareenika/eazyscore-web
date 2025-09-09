@@ -1,1 +1,63 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>Login wird bestätigt…</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+<p>Bitte einen Moment…</p>
+
+<script type="module">
+  import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+  // Deine Supabase-Daten
+  const SUPABASE_URL  = 'https://lhdztkfvrnsqfnbqybfq.supabase.co'
+  const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxoZHp0a2Z2cm5zcWZuYnF5YmZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTczMjIxMjMsImV4cCI6MjA3Mjg5ODEyM30.81BVX5zf_WxE3RdTw32OttwsiMgDanXdNIkWeug-jUs'
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON)
+
+  const APP_HOME = '/eazyscore-web/' // nach erfolgreichem Login zurück zur Hauptseite
+
+  async function handleCallback() {
+    const url = new URL(window.location.href)
+
+    // A) Moderner PKCE-Flow (?code=...)
+    if (url.searchParams.get('code')) {
+      const { error } = await supabase.auth.exchangeCodeForSession(window.location.href)
+      if (error) {
+        console.error('PKCE exchange error:', error.message)
+        alert('Login fehlgeschlagen. Bitte erneut versuchen.')
+      } else {
+        window.location.replace(APP_HOME)
+      }
+      return
+    }
+
+    // B) Älterer Implicit-Flow (#access_token=...)
+    if (url.hash.includes('access_token=')) {
+      const hash = new URLSearchParams(url.hash.slice(1))
+      const access_token  = hash.get('access_token')
+      const refresh_token = hash.get('refresh_token')
+
+      if (access_token && refresh_token) {
+        const { error } = await supabase.auth.setSession({ access_token, refresh_token })
+        if (error) {
+          console.error('setSession error:', error.message)
+          alert('Login fehlgeschlagen. Bitte erneut versuchen.')
+        } else {
+          window.location.replace(APP_HOME)
+        }
+        return
+      }
+    }
+
+    // Fallback
+    alert('Kein Login-Token gefunden. Bitte erneut einloggen.')
+    window.location.replace(APP_HOME)
+  }
+
+  handleCallback()
+</script>
+</body>
+</html>
 
