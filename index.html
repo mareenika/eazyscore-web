@@ -20,13 +20,26 @@
   <div class="container">
     <h1>EAZY Score</h1>
 
-    <!-- LOGIN -->
-    <div style="margin:1rem 0; border:1px solid #ddd; padding:1rem; border-radius:8px;">
-      <label for="emailInput">E-Mail:
-        <input id="emailInput" type="email" placeholder="you@example.com">
-      </label>
-      <button id="btnLoginEmail" type="button">Einloggen per E-Mail</button>
-      <span id="loginStatus" style="margin-left:1rem;"></span>
+    <!-- LOGIN (wird nach erfolgreichem Login automatisch ausgeblendet) -->
+    <div id="loginBox" style="margin:1rem 0; border:1px solid #ddd; padding:1rem; border-radius:8px;">
+      <!-- Eingabe nur anzeigen, solange nicht eingeloggt -->
+      <div id="loginInputs">
+        <label for="emailInput">E-Mail:
+          <input id="emailInput" type="email" placeholder="you@example.com">
+        </label>
+        <button id="btnLoginEmail" type="button">Login-Link senden</button>
+
+        <!-- OTP Fallback -->
+        <div style="margin-top:.75rem">
+          <input id="otpInput" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="6-stelliger Code">
+          <button id="btnVerifyOtp" type="button">Code bestätigen</button>
+        </div>
+
+        <div id="loginHint" style="margin-top:.5rem;font-size:.9em;color:#555"></div>
+      </div>
+
+      <!-- Status-Anzeige wenn eingeloggt -->
+      <div id="loginStatus" style="display:none; margin-top:.5rem; font-weight:600; color:green"></div>
     </div>
     <!-- ENDE LOGIN -->
 
@@ -99,41 +112,72 @@
     </section>
   </div>
 
-  <!-- Dein App-Logic-File -->
+  <!-- Deine App-Logik -->
   <script src="./js/app.js"></script>
 
   <!-- Supabase-Login + Persistenz -->
   <script type="module">
     import { createClient } from "https://esm.sh/@supabase/supabase-js";
 
+    // === Supabase Setup ===
     const SUPABASE_URL = "https://lhdztkfvrnsqfnbqybfq.supabase.co";
     const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxoZHp0a2Z2cm5zcWZuYnF5YmZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTczMjIxMjMsImV4cCI6MjA3Mjg5ODEyM30.81BVX5zf_WxE3RdTw32OttwsiMgDanXdNIkWeug-jUs";
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
 
-    // Login per E-Mail (Magic Link)
+    const CALLBACK_URL = 'https://mareenika.github.io/eazyscore-web/auth/callback/index.html';
+    const APP_HOME = '/eazyscore-web/';
+
+    // === UI-Referenzen ===
+    const loginInputs = document.getElementById('loginInputs');
+    const loginStatus = document.getElementById('loginStatus');
+    const loginHint   = document.getElementById('loginHint');
+
+    // === Magic-Link senden ===
     document.getElementById('btnLoginEmail').addEventListener('click', async () => {
       const email = document.getElementById('emailInput').value.trim();
-      const { error } = await supabase.auth.signInWithOtp({ email, options: {
-      emailRedirectTo: 'https://mareenika.github.io/eazyscore-web/auth/callback/index.html' // <- Magic-Links immer auf der Callback-Seite
-    }                                                      
+      if (!email) return alert('Bitte E-Mail eingeben.');
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: CALLBACK_URL }
+      });
+      if (error) {
+        alert(error.message);
+        loginHint.textContent = '';
+      } else {
+        alert("Mail versendet. Falls der Link auf Desktop nicht klappt, nutze den Code unten.");
+        loginHint.textContent = 'Tipp: Öffne den Link im Standard-Browser oder gib den Code hier ein.';
+      }
     });
-      
-      alert(error ? error.message : "Check deine E-Mail (Magic Link).");
+
+    // === OTP-Code bestätigen (Fallback) ===
+    document.getElementById('btnVerifyOtp').addEventListener('click', async () => {
+      const email = document.getElementById('emailInput').value.trim();
+      const token = document.getElementById('otpInput').value.trim();
+      if (!email || !token) return alert('E-Mail und Code eingeben.');
+
+      const { error } = await supabase.auth.verifyOtp({ email, token, type: 'email' });
+      if (error) return alert(error.message);
+      await updateStatus(); // UI sofort umschalten
     });
-    
-    // Login-Status
+
+    // === Login-Status steuern ===
     async function updateStatus() {
       const { data: { user } } = await supabase.auth.getUser();
-      document.getElementById('loginStatus').textContent =
-        user ? `Eingeloggt: ${user.email}` : "";
+      if (user) {
+        loginInputs.style.display = 'none';
+        loginStatus.style.display = 'block';
+        loginStatus.textContent = `Eingeloggt: ${user.email}`;
+      } else {
+        loginInputs.style.display = 'block';
+        loginStatus.style.display = 'none';
+        loginStatus.textContent = '';
+      }
       return user;
     }
     updateStatus();
-
-    // Status nach Auth-Änderung automatisch aktualisieren
     supabase.auth.onAuthStateChange(() => updateStatus());
 
-    // ===== Supabase-Helfer =====
+    // ======= Supabase-DB-Helfer =======
     function slugify(s) {
       return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
     }
@@ -153,14 +197,14 @@
     async function saveAssessment({ appId, answers, totalScore, grade }) {
       const { error } = await supabase.from("assessments").insert({
         app_id: appId,
-        answers,                 // YES/NO/UNKNOWN bleiben so gespeichert
+        answers,
         total_score: totalScore,
         grade
       });
       if (error) throw error;
     }
 
-    // ===== Ergebnis aus app.js entgegennehmen und speichern =====
+    // ======= Ergebnis aus app.js entgegennehmen und speichern =======
     document.addEventListener('eazy:result', async (ev) => {
       const user = await updateStatus();
       if (!user) { alert("Bitte zuerst einloggen, dann speichern."); return; }
