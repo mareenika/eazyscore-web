@@ -36,7 +36,11 @@
         <div id="loginHint" style="margin-top:.5rem;font-size:.9em;color:#555"></div>
       </div>
 
-      <div id="loginStatus" style="display:none; margin-top:.5rem; font-weight:600; color:green"></div>
+      <!-- Status + Logout -->
+      <div id="loginStatus" style="display:none; margin-top:.5rem; font-weight:600; color:green">
+        <span id="loginUser"></span>
+        <button id="btnLogout" type="button" style="margin-left:1rem;">Logout</button>
+      </div>
     </div>
     <!-- ENDE LOGIN -->
 
@@ -125,6 +129,8 @@
     const loginBox   = document.getElementById('loginBox');
     const loginInputs= document.getElementById('loginInputs');
     const loginStatus= document.getElementById('loginStatus');
+    const loginUser  = document.getElementById('loginUser');
+    const btnLogout  = document.getElementById('btnLogout');
     const loginHint  = document.getElementById('loginHint');
     const emailEl    = document.getElementById('emailInput');
     const otpEl      = document.getElementById('otpInput');
@@ -155,22 +161,21 @@
 
     function setLoggedInUI(identity) {
       loginInputs.style.display = 'none';
-      loginStatus.style.display = 'block';
-      loginStatus.textContent = `Eingeloggt: ${identity}`;
+      loginStatus.style.display = 'flex';
+      loginStatus.style.alignItems = 'center';
+      loginUser.textContent = `Eingeloggt: ${identity}`;
     }
     function setLoggedOutUI() {
       loginInputs.style.display = 'block';
       loginStatus.style.display = 'none';
-      loginStatus.textContent = '';
+      loginUser.textContent = '';
     }
 
     // ===== Enter-Key nur für Login benutzen =====
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && loginBox.contains(document.activeElement)) {
-        // Enter aus Login-Bereich darf KEIN Formular-Submit auslösen
         e.preventDefault();
         e.stopPropagation();
-        // Stattdessen OTP verifizieren
         verifyBtn.click();
       }
     });
@@ -275,6 +280,20 @@
 
       // Erfolg → UI sofort umschalten
       setLoggedInUI(email);
+    });
+
+    // ===== Logout =====
+    btnLogout.addEventListener('click', async () => {
+      await supabase.auth.signOut();
+      // UI & Felder zurücksetzen
+      setLoggedOutUI();
+      emailEl.readOnly = false;
+      emailEl.value = '';
+      otpEl.value = '';
+      loginHint.textContent = '';
+      sendLockUntil = 0;
+      updateSendButton();
+      alert('Abgemeldet.');
     });
 
     // ===== Status beim Laden/Änderungen =====
