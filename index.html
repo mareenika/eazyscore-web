@@ -6,7 +6,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link href="./css/style.css" rel="stylesheet">
   <style>
-    /* kleine Form-Helfer, falls dein style.css das nicht hat */
     form .question{display:flex;gap:12px;align-items:center;margin:.5rem 0;flex-wrap:wrap}
     .inline-label{min-width:280px;font-weight:600}
     .inline-field select,.inline-field input{padding:.5rem;border:1px solid #ccc;border-radius:6px}
@@ -20,25 +19,23 @@
   <div class="container">
     <h1>EAZY Score</h1>
 
-    <!-- LOGIN (wird nach erfolgreichem Login automatisch ausgeblendet) -->
+    <!-- LOGIN (OTP per E-Mail) -->
     <div id="loginBox" style="margin:1rem 0; border:1px solid #ddd; padding:1rem; border-radius:8px;">
-      <!-- Eingabe nur anzeigen, solange nicht eingeloggt -->
       <div id="loginInputs">
         <label for="emailInput">E-Mail:
-          <input id="emailInput" type="email" placeholder="you@example.com">
+          <input id="emailInput" type="email" placeholder="you@example.com" required>
         </label>
-        <button id="btnLoginEmail" type="button">Login-Link senden</button>
+        <button id="btnSendOtp" type="button">Code senden</button>
 
-        <!-- OTP Fallback -->
         <div style="margin-top:.75rem">
-          <input id="otpInput" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="8-stelliger Code">
+          <input id="otpInput" type="text" inputmode="numeric" pattern="[0-9]*"
+                 maxlength="8" autocomplete="one-time-code" placeholder="8-stelliger Code">
           <button id="btnVerifyOtp" type="button">Code bestätigen</button>
         </div>
 
         <div id="loginHint" style="margin-top:.5rem;font-size:.9em;color:#555"></div>
       </div>
 
-      <!-- Status-Anzeige wenn eingeloggt -->
       <div id="loginStatus" style="display:none; margin-top:.5rem; font-weight:600; color:green"></div>
     </div>
     <!-- ENDE LOGIN -->
@@ -120,110 +117,190 @@
     import { createClient } from "https://esm.sh/@supabase/supabase-js";
 
     // === Supabase Setup ===
-    const SUPABASE_URL = "https://lhdztkfvrnsqfnbqybfq.supabase.co";
+    const SUPABASE_URL  = "https://lhdztkfvrnsqfnbqybfq.supabase.co";
     const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxoZHp0a2Z2cm5zcWZuYnF5YmZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTczMjIxMjMsImV4cCI6MjA3Mjg5ODEyM30.81BVX5zf_WxE3RdTw32OttwsiMgDanXdNIkWeug-jUs";
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
 
-    const CALLBACK_URL = 'https://mareenika.github.io/eazyscore-web/auth/callback/index.html';
-    const APP_HOME = '/eazyscore-web/';
+    // === UI Refs ===
+    const loginBox   = document.getElementById('loginBox');
+    const loginInputs= document.getElementById('loginInputs');
+    const loginStatus= document.getElementById('loginStatus');
+    const loginHint  = document.getElementById('loginHint');
+    const emailEl    = document.getElementById('emailInput');
+    const otpEl      = document.getElementById('otpInput');
+    const sendBtn    = document.getElementById('btnSendOtp');
+    const verifyBtn  = document.getElementById('btnVerifyOtp');
 
-    // === UI-Referenzen ===
-    const loginInputs = document.getElementById('loginInputs');
-    const loginStatus = document.getElementById('loginStatus');
-    const loginHint   = document.getElementById('loginHint');
+    // === State ===
+    let lastEmailSent = null;
+    let sendLockUntil = 0;
 
-    // === Magic-Link senden ===
-    document.getElementById('btnLoginEmail').addEventListener('click', async () => {
-      const email = document.getElementById('emailInput').value.trim();
+    const normalizeEmail = v => (v || '').trim().toLowerCase();
+
+    // Fullwidth / arabische Ziffern -> ASCII 0–9
+    function normalizeDigits(str) {
+      if (!str) return '';
+      str = str.replace(/[\uFF10-\uFF19]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFF10 + 0x30)); // fullwidth
+      str = str.replace(/[\u0660-\u0669]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0x0660 + 0x30)); // arabic-indic
+      str = str.replace(/[\u06F0-\u06F9]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0x06F0 + 0x30)); // eastern arabic
+      return str;
+    }
+    function cleanToken(v) {
+      return normalizeDigits(v || '')
+        .replace(/[\u200B-\u200D\uFEFF]/g, '') // zero-width
+        .replace(/[\u00A0\s\-_.,]/g, '')       // NBSP/Spaces/Trenner
+        .replace(/[^0-9]/g, '')                // nur Ziffern
+        .trim();
+    }
+
+    function setLoggedInUI(identity) {
+      loginInputs.style.display = 'none';
+      loginStatus.style.display = 'block';
+      loginStatus.textContent = `Eingeloggt: ${identity}`;
+    }
+    function setLoggedOutUI() {
+      loginInputs.style.display = 'block';
+      loginStatus.style.display = 'none';
+      loginStatus.textContent = '';
+    }
+
+    // ===== Enter-Key nur für Login benutzen =====
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && loginBox.contains(document.activeElement)) {
+        // Enter aus Login-Bereich darf KEIN Formular-Submit auslösen
+        e.preventDefault();
+        e.stopPropagation();
+        // Stattdessen OTP verifizieren
+        verifyBtn.click();
+      }
+    });
+
+    // ===== OTP Eingabe: nur 8 Ziffern, Paste säubern =====
+    otpEl.setAttribute('maxlength','8');
+    otpEl.addEventListener('input', () => {
+      const cleaned = cleanToken(otpEl.value).slice(0, 8);
+      if (otpEl.value !== cleaned) otpEl.value = cleaned;
+    });
+    otpEl.addEventListener('paste', e => {
+      e.preventDefault();
+      const text = (e.clipboardData || window.clipboardData).getData('text');
+      otpEl.value = cleanToken(text).slice(0, 8);
+    });
+
+    // ===== Send-Button Sperre (60s) =====
+    function startSendLock(seconds = 60) {
+      sendLockUntil = Date.now() + seconds * 1000;
+      updateSendButton();
+      const tick = setInterval(() => {
+        if (Date.now() >= sendLockUntil) {
+          clearInterval(tick);
+          updateSendButton();
+        } else {
+          updateSendButton();
+        }
+      }, 250);
+    }
+    function updateSendButton() {
+      const now = Date.now();
+      if (now < sendLockUntil) {
+        const secs = Math.max(1, Math.ceil((sendLockUntil - now) / 1000));
+        sendBtn.disabled = true;
+        sendBtn.textContent = `Code senden (${secs}s)`;
+      } else {
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Code senden';
+      }
+    }
+
+    // ===== Code senden =====
+    sendBtn.addEventListener('click', async () => {
+      if (Date.now() < sendLockUntil) return;
+
+      const email = normalizeEmail(emailEl.value);
       if (!email) return alert('Bitte E-Mail eingeben.');
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: { emailRedirectTo: CALLBACK_URL }
-      });
-      if (error) {
-        alert(error.message);
-        loginHint.textContent = '';
-      } else {
-        alert("Mail versendet. Falls der Link auf Desktop nicht klappt, nutze den Code unten.");
-        loginHint.textContent = 'Tipp: Öffne den Link im Standard-Browser oder gib den Code hier ein.';
-      }
-    });
 
-    // === OTP-Code bestätigen (Fallback) ===
-    document.getElementById('btnVerifyOtp').addEventListener('click', async () => {
-      const email = document.getElementById('emailInput').value.trim();
-      const token = document.getElementById('otpInput').value.trim();
-      if (!email || !token) return alert('E-Mail und Code eingeben.');
+      // E-Mail nach dem Senden fixieren (Verwechslungen vermeiden)
+      emailEl.value = email;
+      emailEl.readOnly = true;
 
-      const { error } = await supabase.auth.verifyOtp({ email, token, type: 'email' });
-      if (error) return alert(error.message);
-      await updateStatus(); // UI sofort umschalten
-    });
-
-    // === Login-Status steuern ===
-    async function updateStatus() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        loginInputs.style.display = 'none';
-        loginStatus.style.display = 'block';
-        loginStatus.textContent = `Eingeloggt: ${user.email}`;
-      } else {
-        loginInputs.style.display = 'block';
-        loginStatus.style.display = 'none';
-        loginStatus.textContent = '';
-      }
-      return user;
-    }
-    updateStatus();
-    supabase.auth.onAuthStateChange(() => updateStatus());
-
-    // ======= Supabase-DB-Helfer =======
-    function slugify(s) {
-      return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-    }
-
-    async function getOrCreateApp({ bundleId, name, category }) {
-      let { data: apps, error } = await supabase
-        .from("apps").select("*").eq("bundle_id", bundleId).limit(1);
-      if (error) throw error;
-      if (apps?.length) return apps[0];
-
-      const { data, error: insErr } = await supabase
-        .from("apps").insert({ bundle_id: bundleId, name, category }).select().single();
-      if (insErr) throw insErr;
-      return data;
-    }
-
-    async function saveAssessment({ appId, answers, totalScore, grade }) {
-      const { error } = await supabase.from("assessments").insert({
-        app_id: appId,
-        answers,
-        total_score: totalScore,
-        grade
-      });
-      if (error) throw error;
-    }
-
-    // ======= Ergebnis aus app.js entgegennehmen und speichern =======
-    document.addEventListener('eazy:result', async (ev) => {
-      const user = await updateStatus();
-      if (!user) { alert("Bitte zuerst einloggen, dann speichern."); return; }
-
-      const { answers, score, grade, meta } = ev.detail;
-      const { appName, version, category } = meta;
-
-      // Fallback-Bundle-ID aus Name+Version
-      const bundleId = slugify(`${appName || 'unbenannte-app'}-${version || 'v1'}`);
-
+      sendBtn.disabled = true;
       try {
-        const app = await getOrCreateApp({ bundleId, name: appName || 'Unbenannte App', category });
-        await saveAssessment({ appId: app.id, answers, totalScore: score, grade });
-        console.log("Gespeichert:", { appId: app.id, score, grade });
-      } catch (e) {
-        console.error(e);
-        alert('Fehler beim Speichern: ' + (e?.message || e));
+        const { error } = await supabase.auth.signInWithOtp({ email });
+        if (error) {
+          alert(error.message);
+          loginHint.textContent = '';
+          emailEl.readOnly = false;
+          return;
+        }
+        lastEmailSent = email;
+        loginHint.textContent = `E-Mail gesendet an ${email}. Nutze den NEUESTEN 8-stelligen Code (ältere Codes werden ungültig).`;
+        alert('Code gesendet. Prüfe deine E-Mail (neueste Nachricht) – dann Code hier eingeben.');
+        otpEl.focus();
+        startSendLock(60);
+      } finally {
+        // Entsperren übernimmt der Lock-Timer
       }
     });
+
+    // ===== OTP verifizieren (mit Typ-Fallbacks) =====
+    verifyBtn.addEventListener('click', async () => {
+      const email = normalizeEmail(emailEl.value);
+      const token = cleanToken(otpEl.value);
+
+      if (!email || !token) return alert('E-Mail und Code eingeben.');
+      if (token.length !== 8) return alert('Bitte den 8-stelligen Code vollständig eingeben.');
+      if (lastEmailSent && email !== lastEmailSent) {
+        return alert(`Diese E-Mail (${email}) unterscheidet sich von der Adresse, an die der Code gesendet wurde (${lastEmailSent}). Bitte korrigieren oder neuen Code senden.`);
+      }
+
+      const tryTypes = ['email', 'signup', 'recovery'];
+      let finalError = null;
+      for (const t of tryTypes) {
+        const { error } = await supabase.auth.verifyOtp({ email, token, type: t });
+        if (!error) { finalError = null; break; }
+        finalError = error;
+        if (!/invalid|expired/i.test(error.message)) break;
+      }
+
+      if (finalError) {
+        if (/expired/i.test(finalError.message)) {
+          alert('Code abgelaufen. Bitte neuen Code anfordern und sofort verwenden.');
+        } else if (/invalid/i.test(finalError.message)) {
+          alert('Code ungültig. Bitte NUR den neuesten Code aus der letzten E-Mail verwenden (kein älterer).');
+        } else {
+          alert(finalError.message);
+        }
+        return;
+      }
+
+      // Erfolg → UI sofort umschalten
+      setLoggedInUI(email);
+    });
+
+    // ===== Status beim Laden/Änderungen =====
+    async function updateStatus() {
+      const { data: { session } } = await supabase.auth.getSession();
+      const email = session?.user?.email;
+      if (email) {
+        setLoggedInUI(email);
+        emailEl.value = email;
+        emailEl.readOnly = true;
+        sendLockUntil = 0;
+        updateSendButton();
+      } else {
+        setLoggedOutUI();
+        emailEl.readOnly = false;
+      }
+      return session?.user ?? null;
+    }
+    await updateStatus();
+    supabase.auth.onAuthStateChange((_evt, session) => {
+      const email = session?.user?.email;
+      if (email) setLoggedInUI(email); else setLoggedOutUI();
+    });
+
+    // Initial
+    updateSendButton();
   </script>
 </body>
 </html>
