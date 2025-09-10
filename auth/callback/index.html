@@ -4,70 +4,71 @@
   <meta charset="utf-8">
   <title>Login wird bestätigt…</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;line-height:1.4;margin:24px;color:#222}
+    .box{max-width:640px;margin:auto;border:1px solid #eee;border-radius:10px;padding:18px}
+    .muted{color:#666;font-size:.95em}
+  </style>
 </head>
 <body>
-<p>Bitte einen Moment…</p>
+<div class="box">
+  <h2>Login wird bestätigt…</h2>
+  <p class="muted">Falls du per E-Mail-Code (OTP) eingeloggt hast, passiert hier nichts weiter – du wirst gleich zur App geleitet.</p>
+  <p id="state" class="muted">Bitte einen Moment…</p>
+</div>
 
 <script type="module">
+  // Für alte Magic-Links weiterhin kompatibel – bei OTP ohne Wirkung.
   import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-  // === Deine Supabase-Daten ===
   const SUPABASE_URL  = 'https://lhdztkfvrnsqfnbqybfq.supabase.co'
   const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxoZHp0a2Z2cm5zcWZuYnF5YmZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTczMjIxMjMsImV4cCI6MjA3Mjg5ODEyM30.81BVX5zf_WxE3RdTw32OttwsiMgDanXdNIkWeug-jUs'
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON)
 
-  // Nach erfolgreichem Login zurück zur Hauptseite
   const APP_HOME = '/eazyscore-web/'
+  const $state = document.getElementById('state')
 
-  // Hilfsfunktion: eingebettete Original-URL aus Mail-Redirects extrahieren
   function extractEmbeddedUrl(u) {
     try {
       const url = new URL(u)
-
-      // Outlook SafeLinks
       if (url.hostname.includes('safelinks.protection.outlook.com')) {
         const inner = url.searchParams.get('url') || url.searchParams.get('URL')
         if (inner) return decodeURIComponent(inner)
       }
-
-      // Google Redirector
       if (url.hostname.includes('google.') && url.pathname === '/url') {
         const inner = url.searchParams.get('q')
         if (inner) return decodeURIComponent(inner)
       }
-
-      // Generische Fallback-Parameter
       for (const k of ['url','u','q','redirect','target']) {
         const v = url.searchParams.get(k)
-        if (v && /^https?:/i.test(decodeURIComponent(v))) {
-          return decodeURIComponent(v)
-        }
+        if (v && /^https?:/i.test(decodeURIComponent(v))) return decodeURIComponent(v)
       }
     } catch (_) {}
     return null
   }
 
-  // Versucht Token/Code aus URL zu verarbeiten
   async function tryHandle(href) {
     const url = new URL(href)
 
-    // A) Moderner PKCE-Flow (?code=...)
+    // PKCE (?code=...)
     const code = url.searchParams.get('code')
     if (code) {
+      $state.textContent = 'Sitzung wird erstellt…'
       const { error } = await supabase.auth.exchangeCodeForSession(href)
-      if (error) throw new Error('exchangeCodeForSession: ' + error.message)
-      return true
+      if (!error) return true
+      console.warn('exchangeCodeForSession:', error?.message)
     }
 
-    // B) Implicit-Flow (#access_token=...)
+    // Implicit (#access_token=..., #refresh_token=...)
     if (href.includes('#')) {
-      const hashParams = new URLSearchParams(href.split('#')[1] || '')
-      const at  = hashParams.get('access_token')
-      const rt  = hashParams.get('refresh_token')
+      const hash = new URLSearchParams(href.split('#')[1] || '')
+      const at = hash.get('access_token')
+      const rt = hash.get('refresh_token')
       if (at && rt) {
+        $state.textContent = 'Sitzung wird gesetzt…'
         const { error } = await supabase.auth.setSession({ access_token: at, refresh_token: rt })
-        if (error) throw new Error('setSession: ' + error.message)
-        return true
+        if (!error) return true
+        console.warn('setSession:', error?.message)
       }
     }
     return false
@@ -76,27 +77,26 @@
   async function handleCallback() {
     const raw = window.location.href
 
-    // 1) Direkt versuchen
+    // 1) Direkt versuchen (falls echter Magic-Link)
     if (await tryHandle(raw)) {
-      window.location.replace(APP_HOME)
-      return
+      $state.textContent = 'Weiterleitung zur App…'
+      return void window.location.replace(APP_HOME)
     }
 
-    // 2) Falls Mailclient den Link umgebrochen hat → eingebettete URL prüfen
+    // 2) Mail-Wrapper (Outlook/Gmail) entpacken
     const embedded = extractEmbeddedUrl(raw)
     if (embedded && await tryHandle(embedded)) {
-      window.location.replace(APP_HOME)
-      return
+      $state.textContent = 'Weiterleitung zur App…'
+      return void window.location.replace(APP_HOME)
     }
 
-    // 3) Kein Token gefunden
-    alert('Kein Login-Token gefunden. Bitte erneut einloggen oder Code verwenden.')
+    // 3) Kein Token/Code → still zur App (OTP-Flow braucht diese Seite nicht)
+    $state.textContent = 'Weiterleitung…'
     window.location.replace(APP_HOME)
   }
 
   handleCallback().catch(err => {
-    console.error(err)
-    alert('Login fehlgeschlagen: ' + err.message)
+    console.warn('Callback error:', err)
     window.location.replace(APP_HOME)
   })
 </script>
