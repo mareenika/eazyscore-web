@@ -11,7 +11,7 @@
 <script type="module">
   import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-  // Deine Supabase-Daten
+  // === Deine Supabase-Daten ===
   const SUPABASE_URL  = 'https://lhdztkfvrnsqfnbqybfq.supabase.co'
   const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxoZHp0a2Z2cm5zcWZuYnF5YmZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTczMjIxMjMsImV4cCI6MjA3Mjg5ODEyM30.81BVX5zf_WxE3RdTw32OttwsiMgDanXdNIkWeug-jUs'
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON)
@@ -19,7 +19,7 @@
   // Nach erfolgreichem Login zurück zur Hauptseite
   const APP_HOME = '/eazyscore-web/'
 
-  // --- Hilfsfunktion: eingebettete Original-URL aus Link-Wrappern ziehen ---
+  // Hilfsfunktion: eingebettete Original-URL aus Mail-Redirects extrahieren
   function extractEmbeddedUrl(u) {
     try {
       const url = new URL(u)
@@ -29,12 +29,14 @@
         const inner = url.searchParams.get('url') || url.searchParams.get('URL')
         if (inner) return decodeURIComponent(inner)
       }
+
       // Google Redirector
       if (url.hostname.includes('google.') && url.pathname === '/url') {
         const inner = url.searchParams.get('q')
         if (inner) return decodeURIComponent(inner)
       }
-      // Generische Parameter
+
+      // Generische Fallback-Parameter
       for (const k of ['url','u','q','redirect','target']) {
         const v = url.searchParams.get(k)
         if (v && /^https?:/i.test(decodeURIComponent(v))) {
@@ -45,11 +47,11 @@
     return null
   }
 
-  // --- versucht Tokens/Code aus der übergebenen URL zu verarbeiten ---
+  // Versucht Token/Code aus URL zu verarbeiten
   async function tryHandle(href) {
     const url = new URL(href)
 
-    // 1) Moderner PKCE-Flow: ?code=...
+    // A) Moderner PKCE-Flow (?code=...)
     const code = url.searchParams.get('code')
     if (code) {
       const { error } = await supabase.auth.exchangeCodeForSession(href)
@@ -57,38 +59,38 @@
       return true
     }
 
-    // 2) Älterer Implicit-Flow: #access_token=..., #refresh_token=...
+    // B) Implicit-Flow (#access_token=...)
     if (href.includes('#')) {
       const hashParams = new URLSearchParams(href.split('#')[1] || '')
-      const access_token  = hashParams.get('access_token')
-      const refresh_token = hashParams.get('refresh_token')
-      if (access_token && refresh_token) {
-        const { error } = await supabase.auth.setSession({ access_token, refresh_token })
+      const at  = hashParams.get('access_token')
+      const rt  = hashParams.get('refresh_token')
+      if (at && rt) {
+        const { error } = await supabase.auth.setSession({ access_token: at, refresh_token: rt })
         if (error) throw new Error('setSession: ' + error.message)
         return true
       }
     }
-
     return false
   }
 
   async function handleCallback() {
-    // 0) Versuche die aktuelle URL direkt
     const raw = window.location.href
+
+    // 1) Direkt versuchen
     if (await tryHandle(raw)) {
       window.location.replace(APP_HOME)
       return
     }
 
-    // 1) Wenn der Mail-Client einen Link-Wrapper benutzt hat, Original-URL extrahieren
+    // 2) Falls Mailclient den Link umgebrochen hat → eingebettete URL prüfen
     const embedded = extractEmbeddedUrl(raw)
     if (embedded && await tryHandle(embedded)) {
       window.location.replace(APP_HOME)
       return
     }
 
-    // 2) Kein Token gefunden → Nutzer informieren
-    alert('Kein Login-Token gefunden. Bitte den Link im normalen Browser öffnen oder einen neuen Link anfordern.')
+    // 3) Kein Token gefunden
+    alert('Kein Login-Token gefunden. Bitte erneut einloggen oder Code verwenden.')
     window.location.replace(APP_HOME)
   }
 
