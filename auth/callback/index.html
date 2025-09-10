@@ -16,48 +16,87 @@
   const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxoZHp0a2Z2cm5zcWZuYnF5YmZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTczMjIxMjMsImV4cCI6MjA3Mjg5ODEyM30.81BVX5zf_WxE3RdTw32OttwsiMgDanXdNIkWeug-jUs'
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON)
 
-  const APP_HOME = '/eazyscore-web/' // nach erfolgreichem Login zurück zur Hauptseite
+  // Nach erfolgreichem Login zurück zur Hauptseite
+  const APP_HOME = '/eazyscore-web/'
+
+  // --- Hilfsfunktion: eingebettete Original-URL aus Link-Wrappern ziehen ---
+  function extractEmbeddedUrl(u) {
+    try {
+      const url = new URL(u)
+
+      // Outlook SafeLinks
+      if (url.hostname.includes('safelinks.protection.outlook.com')) {
+        const inner = url.searchParams.get('url') || url.searchParams.get('URL')
+        if (inner) return decodeURIComponent(inner)
+      }
+      // Google Redirector
+      if (url.hostname.includes('google.') && url.pathname === '/url') {
+        const inner = url.searchParams.get('q')
+        if (inner) return decodeURIComponent(inner)
+      }
+      // Generische Parameter
+      for (const k of ['url','u','q','redirect','target']) {
+        const v = url.searchParams.get(k)
+        if (v && /^https?:/i.test(decodeURIComponent(v))) {
+          return decodeURIComponent(v)
+        }
+      }
+    } catch (_) {}
+    return null
+  }
+
+  // --- versucht Tokens/Code aus der übergebenen URL zu verarbeiten ---
+  async function tryHandle(href) {
+    const url = new URL(href)
+
+    // 1) Moderner PKCE-Flow: ?code=...
+    const code = url.searchParams.get('code')
+    if (code) {
+      const { error } = await supabase.auth.exchangeCodeForSession(href)
+      if (error) throw new Error('exchangeCodeForSession: ' + error.message)
+      return true
+    }
+
+    // 2) Älterer Implicit-Flow: #access_token=..., #refresh_token=...
+    if (href.includes('#')) {
+      const hashParams = new URLSearchParams(href.split('#')[1] || '')
+      const access_token  = hashParams.get('access_token')
+      const refresh_token = hashParams.get('refresh_token')
+      if (access_token && refresh_token) {
+        const { error } = await supabase.auth.setSession({ access_token, refresh_token })
+        if (error) throw new Error('setSession: ' + error.message)
+        return true
+      }
+    }
+
+    return false
+  }
 
   async function handleCallback() {
-    const url = new URL(window.location.href)
-
-    // A) Moderner PKCE-Flow (?code=...)
-    if (url.searchParams.get('code')) {
-      const { error } = await supabase.auth.exchangeCodeForSession(window.location.href)
-      if (error) {
-        console.error('PKCE exchange error:', error.message)
-        alert('Login fehlgeschlagen. Bitte erneut versuchen.')
-      } else {
-        window.location.replace(APP_HOME)
-      }
+    // 0) Versuche die aktuelle URL direkt
+    const raw = window.location.href
+    if (await tryHandle(raw)) {
+      window.location.replace(APP_HOME)
       return
     }
 
-    // B) Älterer Implicit-Flow (#access_token=...)
-    if (url.hash.includes('access_token=')) {
-      const hash = new URLSearchParams(url.hash.slice(1))
-      const access_token  = hash.get('access_token')
-      const refresh_token = hash.get('refresh_token')
-
-      if (access_token && refresh_token) {
-        const { error } = await supabase.auth.setSession({ access_token, refresh_token })
-        if (error) {
-          console.error('setSession error:', error.message)
-          alert('Login fehlgeschlagen. Bitte erneut versuchen.')
-        } else {
-          window.location.replace(APP_HOME)
-        }
-        return
-      }
+    // 1) Wenn der Mail-Client einen Link-Wrapper benutzt hat, Original-URL extrahieren
+    const embedded = extractEmbeddedUrl(raw)
+    if (embedded && await tryHandle(embedded)) {
+      window.location.replace(APP_HOME)
+      return
     }
 
-    // Fallback
-    alert('Kein Login-Token gefunden. Bitte erneut einloggen.')
+    // 2) Kein Token gefunden → Nutzer informieren
+    alert('Kein Login-Token gefunden. Bitte den Link im normalen Browser öffnen oder einen neuen Link anfordern.')
     window.location.replace(APP_HOME)
   }
 
-  handleCallback()
+  handleCallback().catch(err => {
+    console.error(err)
+    alert('Login fehlgeschlagen: ' + err.message)
+    window.location.replace(APP_HOME)
+  })
 </script>
 </body>
 </html>
-
