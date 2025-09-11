@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>DB-Nachweis</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>body{font-family:system-ui,Arial,sans-serif;margin:20px} table{border-collapse:collapse} td,th{border:1px solid #ddd;padding:6px 8px}</style>
+</head>
+<body>
+  <h1>DB-Nachweis</h1>
+  <p>Zeigt die letzten gespeicherten Bewertungen (nur eigene – dank RLS).</p>
+
+  <div id="auth">
+    <input id="email" type="email" placeholder="you@example.com">
+    <button id="send">Code senden</button>
+    <input id="otp" placeholder="8-stelliger Code" maxlength="8" style="margin-left:6px;">
+    <button id="verify">Code bestätigen</button>
+    <span id="status" style="margin-left:8px;color:green"></span>
+  </div>
+
+  <h2>Letzte Assessments</h2>
+  <button id="load">Neu laden</button>
+  <div id="out"></div>
+
+  <script type="module">
+    import { createClient } from 'https://esm.sh/@supabase/supabase-js';
+
+    const supabase = createClient(
+      'https://lhdztkfvrnsqfnbqybfq.supabase.co',
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxoZHp0a2Z2cm5zcWZuYnF5YmZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTczMjIxMjMsImV4cCI6MjA3Mjg5ODEyM30.81BVX5zf_WxE3RdTw32OttwsiMgDanXdNIkWeug-jUs'
+    );
+
+    const $ = id => document.getElementById(id);
+    const email = $('email'), send=$('send'), otp=$('otp'), verify=$('verify'), status=$('status'), out=$('out');
+
+    send.onclick = async () => {
+      const e = (email.value||'').trim().toLowerCase();
+      if(!e) return alert('E-Mail eingeben');
+      const { error } = await supabase.auth.signInWithOtp({ email:e });
+      if(error) alert(error.message); else alert('Code gesendet.');
+    };
+    verify.onclick = async () => {
+      const e = (email.value||'').trim().toLowerCase();
+      const t = (otp.value||'').replace(/\D/g,'').slice(0,8);
+      if(!e||!t) return;
+      const { error } = await supabase.auth.verifyOtp({ email:e, token:t, type:'email' });
+      if(error) alert(error.message); else status.textContent = 'Eingeloggt: '+e;
+    };
+
+    $('load').onclick = async () => {
+      const { data, error } = await supabase
+        .from('assessments')
+        .select('id, total_score, grade, created_at, app:app_id(name)')
+        .order('created_at', { ascending:false })
+        .limit(10);
+      if(error){ out.textContent = error.message; return; }
+      const rows = (data||[]).map(r => `
+        <tr>
+          <td>${r.id.slice(0,8)}…</td>
+          <td>${r.app?.name ?? '–'}</td>
+          <td>${r.total_score}</td>
+          <td>${r.grade}</td>
+          <td>${new Date(r.created_at).toLocaleString()}</td>
+        </tr>`).join('');
+      out.innerHTML = `<table>
+        <thead><tr><th>ID</th><th>App</th><th>Score</th><th>Note</th><th>Datum</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="5">Keine Daten</td></tr>'}</tbody>
+      </table>`;
+    };
+  </script>
+</body>
+</html>
