@@ -16,11 +16,14 @@
     .note{margin:.5rem 0;color:#555;font-size:.95em}
     .warn{color:#a33}
     .success{color:green}
+    #adminDebug{padding:.4rem .6rem;border:1px dashed #bbb;border-radius:8px;margin:.5rem 0;font-size:.9em}
   </style>
 </head>
 <body>
   <div class="container">
     <h1>EAZY Score</h1>
+
+    <div id="adminDebug" class="note">Admin-Status: <em>prüfe…</em></div>
 
     <p class="note">
       Öffentliche Liste ansehen: <a href="./public.html">Letzte Bewertungen</a>
@@ -56,7 +59,7 @@
       Ergebnisse siehst du hier: <a href="./public.html">Letzte Bewertungen</a>.
     </div>
 
-    <!-- FORMULAR (nur Admin sichtbar) -->
+    <!-- FORMULAR (nur Admin sichtbar oder via ?admin=1) -->
     <form id="auditForm" novalidate style="display:none;">
       <fieldset>
         <legend>App-Details</legend>
@@ -151,6 +154,13 @@
     const verifyBtn  = document.getElementById('btnVerifyOtp');
     const auditForm  = document.getElementById('auditForm');
     const adminNote  = document.getElementById('adminNote');
+    const adminDebug = document.getElementById('adminDebug');
+
+    // --- Helper ---
+    const normalizeEmail = v => (v || '').trim().toLowerCase();
+    const cleanToken = v => (v||'').replace(/[^\d]/g,'').slice(0,8);
+    const urlParams = new URLSearchParams(location.search);
+    const adminBypass = urlParams.get('admin') === '1';
 
     // Enter im Login-Bereich NICHT Formular absenden lassen
     document.addEventListener('keydown', (e) => {
@@ -159,9 +169,6 @@
         verifyBtn.click();
       }
     });
-
-    const normalizeEmail = v => (v || '').trim().toLowerCase();
-    const cleanToken = v => (v||'').replace(/[^\d]/g,'').slice(0,8);
 
     function setLoggedInUI(identity) {
       loginInputs.style.display = 'none';
@@ -172,6 +179,11 @@
       loginInputs.style.display = 'block';
       loginStatus.style.display = 'none';
       loginUser.textContent = '';
+    }
+    function setAdminState({ok, reason, email}) {
+      adminDebug.textContent = ok
+        ? `Admin-Status: ✔︎ (${reason})${email ? ' · ' + email : ''}`
+        : `Admin-Status: ✖︎ (${reason})${email ? ' · ' + email : ''}`;
     }
 
     // OTP senden
@@ -210,15 +222,21 @@
       setLoggedOutUI();
       auditForm.style.display = 'none';
       adminNote.classList.add('hidden');
+      setAdminState({ok:false, reason:'logged_out'});
     });
 
-    // Admin-Check (mit temporärem Mail-Fallback für dich)
+    // Admin-Check (mit temporärem Mail-Fallback + ?admin=1)
     async function isAdmin() {
+      if (adminBypass) return { ok:true, reason:'url_bypass' };
+
       const { data: { session } } = await supabase.auth.getSession();
-      const uid = session?.user?.id;
-      const email = session?.user?.email?.toLowerCase();
-      if (!uid) return { ok:false, reason:'not_logged_in' };
-      if (email === 'mareen95@hotmail.de') return { ok:true, reason:'email_fallback' }; // optional: später entfernen
+      const uid = session?.user?.id || null;
+      const email = (session?.user?.email || '').toLowerCase();
+
+      if (!uid) return { ok:false, reason:'not_logged_in', email };
+
+      // harter Fallback für dich, bis DB sicher ist
+      if (email === 'mareen95@hotmail.de') return { ok:true, reason:'email_fallback', email };
 
       const { data, error } = await supabase
         .from('admins')
@@ -226,12 +244,14 @@
         .eq('user_id', uid)
         .maybeSingle();
 
-      if (error) return { ok:false, reason:'query_error', error };
-      return { ok: !!data, reason: data ? 'db_match' : 'not_in_admins' };
+      if (error) return { ok:false, reason:'admins_query_error', email };
+      return { ok: !!data, reason: data ? 'db_match' : 'not_in_admins', email };
     }
 
     async function guardAdminUI() {
       const res = await isAdmin();
+      setAdminState(res);
+
       const { data: { session } } = await supabase.auth.getSession();
 
       if (res.ok) {
@@ -250,6 +270,7 @@
       if (session?.user?.email) setLoggedInUI(session.user.email);
       await guardAdminUI();
     })();
+
     supabase.auth.onAuthStateChange(() => guardAdminUI());
 
     // === DB-Persistenz: App & Assessment speichern ===
