@@ -10,15 +10,18 @@
     .wrap{max-width:1000px;margin:0 auto;padding:1rem}
     header{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap}
     .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-top:12px}
-    .card{border:1px solid #e5e7eb;border-radius:12px;padding:12px}
+    .card{border:1px solid #e5e7eb;border-radius:12px;padding:12px;background:#fff}
     .muted{color:#6b7280}
     .tag{display:inline-block;padding:.1rem .5rem;border-radius:999px;border:1px solid #e5e7eb;font-size:.8rem}
     .score{font-size:1.6rem;font-weight:700}
     .grade{font-weight:700}
-    .table{width:100%;border-collapse:collapse;margin-top:8px}
-    .table th,.table td{padding:.5rem;border-bottom:1px solid #eee;text-align:left}
+    .table{width:100%;border-collapse:collapse;margin-top:8px;background:#fff;border-radius:12px;overflow:hidden}
+    .table th,.table td{padding:.6rem;border-bottom:1px solid #eee;text-align:left}
+    .table th{background:#f8fafc}
     .toolbar{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin:.5rem 0}
     input[type="search"]{padding:.5rem;border:1px solid #ccc;border-radius:8px;min-width:220px}
+    .empty{padding:1rem;border:1px dashed #ddd;border-radius:12px;color:#6b7280;background:#fff}
+    .error{padding:.75rem;border:1px solid #fca5a5;background:#fef2f2;color:#7f1d1d;border-radius:8px}
   </style>
 </head>
 <body>
@@ -37,6 +40,8 @@
         <span id="count" class="muted"></span>
       </div>
       <div id="cards" class="cards"></div>
+      <div id="latestEmpty" class="empty" style="display:none">Noch keine Bewertungen vorhanden.</div>
+      <div id="latestErr" class="error" style="display:none"></div>
     </section>
 
     <section id="apps">
@@ -52,6 +57,8 @@
         </thead>
         <tbody id="appsTbody"></tbody>
       </table>
+      <div id="appsEmpty" class="empty" style="display:none">Noch keine Apps im Katalog.</div>
+      <div id="appsErr" class="error" style="display:none"></div>
     </section>
   </div>
 
@@ -64,90 +71,119 @@
     );
 
     const cards = document.getElementById('cards');
-    const appsTbody = document.getElementById('appsTbody');
     const searchInput = document.getElementById('search');
     const countEl = document.getElementById('count');
+    const latestEmpty = document.getElementById('latestEmpty');
+    const latestErr = document.getElementById('latestErr');
+
+    const appsTbody = document.getElementById('appsTbody');
+    const appsEmpty = document.getElementById('appsEmpty');
+    const appsErr = document.getElementById('appsErr');
 
     // Helpers
     const fmtDate = iso => new Date(iso).toLocaleString('de-DE', { dateStyle:'medium', timeStyle:'short' });
     const escape = s => (s||'').replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
 
-    // Load datasets
-    const [{ data: scores }, { data: apps }, { data: lastAssess }] = await Promise.all([
-      // last score/grade per app (custom view)
-      supabase.from('app_scores').select('*').order('last_rated_at', { ascending:false }).limit(100),
-      // app catalogue (public view)
-      supabase.from('v_apps_public').select('*').order('created_at', { ascending:false }).limit(200),
-      // raw latest assessments (public view)
-      supabase.from('v_assessments_public').select('*').order('created_at', { ascending:false }).limit(200)
-    ]);
+    try {
+      // Lade Daten parallel (Views sind öffentlich lesbar)
+      const [{ data: apps, error: appsErrRes },
+             { data: assessments, error: assessErrRes },
+             { data: scores, error: scoresErrRes }] = await Promise.all([
+        supabase.from('v_apps_public').select('*').order('created_at', { ascending:false }).limit(500),
+        supabase.from('v_assessments_public').select('*').order('created_at', { ascending:false }).limit(500),
+        supabase.from('app_scores').select('*').order('last_rated_at', { ascending:false }).limit(500)
+      ]);
 
-    // Index apps by id
-    const appById = Object.create(null);
-    (apps||[]).forEach(a => { appById[a.id] = a; });
+      if (appsErrRes) throw appsErrRes;
+      if (assessErrRes) throw assessErrRes;
+      if (scoresErrRes) throw scoresErrRes;
 
-    // Build "Letzte Bewertungen" cards (from latest assessments, grouped by app, newest first)
-    const byApp = new Map();
-    (lastAssess||[]).forEach(a => {
-      if (!byApp.has(a.app_id)) byApp.set(a.app_id, a);
-    });
-    const latestPerApp = Array.from(byApp.values())
-      .sort((a,b)=> new Date(b.created_at)-new Date(a.created_at))
-      .slice(0, 50);
+      // Indexe
+      const appById = Object.create(null);
+      (apps||[]).forEach(a => { appById[a.id] = a; });
 
-    function gradeColor(g){
-      return {A:'#16a34a',B:'#22c55e',C:'#84cc16',D:'#eab308',E:'#f59e0b',F:'#ef4444'}[g] || '#6b7280';
-    }
-
-    function renderCards(list){
-      cards.innerHTML = '';
-      list.forEach(a => {
-        const app = appById[a.app_id] || {};
-        const name = escape(app.name)||'Unbekannte App';
-        const cat  = escape(app.category)||'–';
-        const score = a.total_score ?? 0;
-        const grade = a.grade || '–';
-        const when  = fmtDate(a.created_at);
-        const el = document.createElement('div');
-        el.className = 'card';
-        el.innerHTML = `
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.25rem">
-            <div style="font-weight:600">${name}</div>
-            <span class="tag">${cat}</span>
-          </div>
-          <div class="score" style="color:${gradeColor(grade)}">${Math.round(score)}%</div>
-          <div class="grade" style="color:${gradeColor(grade)}">Note ${grade}</div>
-          <div class="muted" style="margin-top:.25rem">${when}</div>
-        `;
-        cards.appendChild(el);
+      // Neueste Bewertung je App (aus assessments)
+      const latestByApp = new Map();
+      (assessments||[]).forEach(a => {
+        if (!latestByApp.has(a.app_id)) latestByApp.set(a.app_id, a);
       });
-      countEl.textContent = `${list.length} Einträge`;
-    }
-    renderCards(latestPerApp);
+      const latestPerApp = Array.from(latestByApp.values())
+        .sort((a,b)=> new Date(b.created_at)-new Date(a.created_at))
+        .slice(0, 100);
 
-    // Search filter over cards
-    searchInput.addEventListener('input', () => {
-      const q = searchInput.value.trim().toLowerCase();
-      if (!q) return renderCards(latestPerApp);
-      const filtered = latestPerApp.filter(a => {
-        const app = appById[a.app_id] || {};
-        return (app.name||'').toLowerCase().includes(q) ||
-               (app.category||'').toLowerCase().includes(q);
+      function gradeColor(g){
+        return {A:'#16a34a',B:'#22c55e',C:'#84cc16',D:'#eab308',E:'#f59e0b',F:'#ef4444'}[g] || '#6b7280';
+      }
+
+      function renderCards(list){
+        cards.innerHTML = '';
+        if (!list.length) {
+          latestEmpty.style.display = 'block';
+          countEl.textContent = '0 Einträge';
+          return;
+        }
+        latestEmpty.style.display = 'none';
+
+        list.forEach(a => {
+          const app = appById[a.app_id] || {};
+          const name = escape(app.name)||'Unbekannte App';
+          const cat  = escape(app.category)||'–';
+          const score = a.total_score ?? 0;
+          const grade = a.grade || '–';
+          const when  = fmtDate(a.created_at);
+          const el = document.createElement('div');
+          el.className = 'card';
+          el.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.25rem">
+              <div style="font-weight:600">${name}</div>
+              <span class="tag">${cat}</span>
+            </div>
+            <div class="score" style="color:${gradeColor(grade)}">${Math.round(score)}%</div>
+            <div class="grade" style="color:${gradeColor(grade)}">Note ${grade}</div>
+            <div class="muted" style="margin-top:.25rem">${when}</div>
+          `;
+          cards.appendChild(el);
+        });
+        countEl.textContent = `${list.length} Einträge`;
+      }
+      renderCards(latestPerApp);
+
+      // Live-Suche über Karten (App-Name/Kategorie)
+      searchInput.addEventListener('input', () => {
+        const q = searchInput.value.trim().toLowerCase();
+        if (!q) return renderCards(latestPerApp);
+        const filtered = latestPerApp.filter(a => {
+          const app = appById[a.app_id] || {};
+          return (app.name||'').toLowerCase().includes(q) ||
+                 (app.category||'').toLowerCase().includes(q);
+        });
+        renderCards(filtered);
       });
-      renderCards(filtered);
-    });
 
-    // Apps table
-    (apps||[]).forEach(a => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${escape(a.name)}</td>
-        <td>${escape(a.category)||'–'}</td>
-        <td class="muted">${escape(a.bundle_id)||'–'}</td>
-        <td class="muted">${fmtDate(a.created_at)}</td>
-      `;
-      appsTbody.appendChild(tr);
-    });
+      // Apps-Tabelle rendern
+      appsTbody.innerHTML = '';
+      if (!apps || !apps.length) {
+        appsEmpty.style.display = 'block';
+      } else {
+        appsEmpty.style.display = 'none';
+        apps.forEach(a => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${escape(a.name)}</td>
+            <td>${escape(a.category)||'–'}</td>
+            <td class="muted">${escape(a.bundle_id)||'–'}</td>
+            <td class="muted">${fmtDate(a.created_at)}</td>
+          `;
+          appsTbody.appendChild(tr);
+        });
+      }
+    } catch (err) {
+      console.error(err);
+      latestErr.textContent = 'Fehler beim Laden der Bewertungen: ' + (err?.message || err);
+      latestErr.style.display = 'block';
+      appsErr.textContent = 'Fehler beim Laden des App-Katalogs: ' + (err?.message || err);
+      appsErr.style.display = 'block';
+    }
   </script>
 </body>
 </html>
