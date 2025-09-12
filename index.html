@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="utf-8">
-  <title>EAZY Score (Admin)</title>
+  <title>EAZY Score</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link href="./css/style.css" rel="stylesheet">
   <style>
@@ -23,39 +23,35 @@
     <h1>EAZY Score</h1>
 
     <p class="note">
-      Öffentliche Übersicht (für alle): <a href="./public.html">Letzte Bewertungen</a>
+      Öffentliche Liste ansehen: <a href="./public.html">Letzte Bewertungen</a>
     </p>
 
-    <!-- LOGIN (E-Mail + Passwort, nur für Admin) -->
-    <div id="loginBox" style="margin:1rem 0; border:1px solid #ddd; padding:1rem; border-radius:8px;">
-      <div id="loginInputs">
-        <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
-          <label>E-Mail:
-            <input id="emailInput" type="email" placeholder="you@example.com" required>
-          </label>
-          <label>Passwort:
-            <input id="pwInput" type="password" placeholder="••••••••" required>
-          </label>
-          <button id="btnLogin" type="button">Anmelden</button>
-        </div>
-        <div id="loginHint" class="note"></div>
-      </div>
+    <!-- LOGIN -->
+    <form id="loginForm" style="margin:1rem 0; border:1px solid #ddd; padding:1rem; border-radius:8px;">
+      <label for="emailInput">E-Mail:
+        <input id="emailInput" type="email" placeholder="you@example.com" required>
+      </label>
+      <label for="pwInput">Passwort:
+        <input id="pwInput" type="password" required>
+      </label>
+      <button id="btnLogin" type="submit">Anmelden</button>
+      <div id="loginHint" class="note"></div>
+    </form>
 
-      <!-- Status + Logout -->
-      <div id="loginStatus" style="display:none; margin-top:.5rem; font-weight:600; color:green; align-items:center;">
-        <span id="loginUser"></span>
-        <button id="btnLogout" type="button" style="margin-left:1rem;">Logout</button>
-      </div>
+    <!-- Status + Logout -->
+    <div id="loginStatus" style="display:none; margin:1rem 0; font-weight:600; color:green; align-items:center;">
+      <span id="loginUser"></span>
+      <button id="btnLogout" type="button" style="margin-left:1rem;">Logout</button>
     </div>
-    <!-- ENDE LOGIN -->
 
     <!-- Hinweis für Nicht-Admins -->
     <div id="adminNote" class="note warn hidden">
-      Du bist eingeloggt, aber kein Admin. Du wirst zur öffentlichen Übersicht geleitet…
+      Du bist eingeloggt, aber kein Admin. Bewertungen können nur Admins erstellen.
+      Ergebnisse siehst du hier: <a href="./public.html">Letzte Bewertungen</a>.
     </div>
 
     <!-- FORMULAR (nur Admin sichtbar) -->
-    <form id="auditForm" novalidate class="hidden">
+    <form id="auditForm" novalidate style="display:none;">
       <fieldset>
         <legend>App-Details</legend>
         <div class="fieldstack">
@@ -82,7 +78,7 @@
       </div>
     </form>
 
-    <!-- ERGEBNIS -->
+    <!-- Ergebnis -->
     <section id="resultSection" class="score-card hidden" aria-live="polite">
       <div class="top-row">
         <div class="score-block">
@@ -124,10 +120,10 @@
     </section>
   </div>
 
-  <!-- App-Logik (Form/Score/Dispatch des Events) -->
+  <!-- App-Logik -->
   <script src="./js/app.js"></script>
 
-  <!-- Supabase-Login + Admin-Gate -->
+  <!-- Supabase Login -->
   <script type="module">
     import { createClient } from "https://esm.sh/@supabase/supabase-js";
 
@@ -136,100 +132,71 @@
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxoZHp0a2Z2cm5zcWZuYnF5YmZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTczMjIxMjMsImV4cCI6MjA3Mjg5ODEyM30.81BVX5zf_WxE3RdTw32OttwsiMgDanXdNIkWeug-jUs"
     );
 
-    // Refs
-    const emailEl     = document.getElementById('emailInput');
-    const pwEl        = document.getElementById('pwInput');
-    const btnLogin    = document.getElementById('btnLogin');
-    const btnLogout   = document.getElementById('btnLogout');
-    const loginInputs = document.getElementById('loginInputs');
-    const loginStatus = document.getElementById('loginStatus');
-    const loginUser   = document.getElementById('loginUser');
-    const loginHint   = document.getElementById('loginHint');
-    const auditForm   = document.getElementById('auditForm');
-    const adminNote   = document.getElementById('adminNote');
+    const loginForm  = document.getElementById('loginForm');
+    const loginHint  = document.getElementById('loginHint');
+    const loginUser  = document.getElementById('loginUser');
+    const loginStatus= document.getElementById('loginStatus');
+    const btnLogout  = document.getElementById('btnLogout');
+    const auditForm  = document.getElementById('auditForm');
+    const adminNote  = document.getElementById('adminNote');
 
-    // Nur dieser Admin darf bewerten:
-    const ADMIN_EMAIL = 'mareen95@hotmail.de';
-    const ADMIN_UID   = '13455c4c-4d52-4e33-aca9-436f2daf8716'; // optionaler Sicherheits-Check
-
-    function setLoggedInUI(email){
-      loginInputs.style.display = 'none';
+    function setLoggedInUI(email) {
+      loginForm.style.display = 'none';
       loginStatus.style.display = 'flex';
       loginUser.textContent = `Eingeloggt: ${email}`;
     }
-    function setLoggedOutUI(){
-      loginInputs.style.display = 'block';
+    function setLoggedOutUI() {
+      loginForm.style.display = 'block';
       loginStatus.style.display = 'none';
       loginUser.textContent = '';
-    }
-    function showAdminForm(){
-      auditForm.classList.remove('hidden');
+      auditForm.style.display = 'none';
       adminNote.classList.add('hidden');
     }
-    function hideAdminForm(){
-      auditForm.classList.add('hidden');
-    }
-    function redirectToPublicSoon() {
-      setTimeout(() => location.replace('./public.html'), 600);
-    }
 
-    // Passwort-Login
-    btnLogin.addEventListener('click', async () => {
-      const email = (emailEl.value || '').trim().toLowerCase();
-      const password = pwEl.value || '';
-      if (!email || !password) return alert('E-Mail & Passwort eingeben.');
-
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) { alert(error.message); return; }
-
-      // Status
+    async function isAdmin() {
       const { data: { session } } = await supabase.auth.getSession();
-      const meEmail = (session?.user?.email || '').toLowerCase();
-      const meUid   = session?.user?.id || '';
+      const uid = session?.user?.id;
+      if (!uid) return false;
+      const { data, error } = await supabase.from('admins').select('user_id').eq('user_id', uid).maybeSingle();
+      return !!data && !error;
+    }
 
-      setLoggedInUI(meEmail);
-
-      // Doppel-Check: Mail & (optional) UID
-      const isMailOk = meEmail === ADMIN_EMAIL;
-      const isUidOk  = !ADMIN_UID || meUid === ADMIN_UID;
-
-      if (isMailOk && isUidOk) {
-        showAdminForm();
-        loginHint.textContent = 'Admin bestätigt.';
-        loginHint.className = 'note success';
+    async function guardAdminUI() {
+      if (await isAdmin()) {
+        auditForm.style.display = 'block';
+        adminNote.classList.add('hidden');
       } else {
-        hideAdminForm();
+        auditForm.style.display = 'none';
         adminNote.classList.remove('hidden');
-        loginHint.textContent = 'Kein Admin-Zugang. Du wirst zur öffentlichen Übersicht geleitet.';
-        loginHint.className = 'note warn';
-        redirectToPublicSoon();
       }
+    }
+
+    // Login Submit
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('emailInput').value.trim();
+      const pw    = document.getElementById('pwInput').value.trim();
+      if (!email || !pw) return alert("Bitte E-Mail und Passwort eingeben");
+
+      const { error } = await supabase.auth.signInWithPassword({ email, password: pw });
+      if (error) { loginHint.textContent = error.message; return; }
+
+      setLoggedInUI(email);
+      await guardAdminUI();
     });
 
     // Logout
     btnLogout.addEventListener('click', async () => {
       await supabase.auth.signOut();
       setLoggedOutUI();
-      hideAdminForm();
     });
 
-    // Initialstatus (Seite neu laden)
+    // Status bei Laden
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      const meEmail = (session?.user?.email || '').toLowerCase();
-      const meUid   = session?.user?.id || '';
-
-      if (meEmail) setLoggedInUI(meEmail);
-
-      const isMailOk = meEmail === ADMIN_EMAIL;
-      const isUidOk  = !ADMIN_UID || meUid === ADMIN_UID;
-
-      if (isMailOk && isUidOk) {
-        showAdminForm();
-      } else if (meEmail) {
-        hideAdminForm();
-        adminNote.classList.remove('hidden');
-        redirectToPublicSoon();
+      if (session?.user?.email) {
+        setLoggedInUI(session.user.email);
+        await guardAdminUI();
       }
     })();
   </script>
