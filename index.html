@@ -1,61 +1,47 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>EAZY Score (Admin)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="./css/style.css" rel="stylesheet">
+  <style>
+    form .question{display:flex;gap:12px;align-items:center;margin:.5rem 0;flex-wrap:wrap}
+    .inline-label{min-width:280px;font-weight:600}
+    .inline-field select,.inline-field input{padding:.5rem;border:1px solid #ccc;border-radius:6px}
+    fieldset{border:1px solid #e2e8f0;border-radius:8px;padding:1rem;margin:1rem 0}
+    legend{font-weight:700}
+    .hidden{display:none}
+    .footer{display:flex;justify-content:flex-start}
+    .note{margin:.5rem 0;color:#555;font-size:.95em}
+    .warn{color:#a33}
+    .success{color:green}
+  </style>
+</head>
 <body>
-  <!-- Sofort-Bypass für ?admin=1, noch bevor andere Skripte laufen -->
-  <script>
-    (function () {
-      const p = new URLSearchParams(location.search);
-      if (p.get('admin') === '1') {
-        document.addEventListener('DOMContentLoaded', () => {
-          const f = document.getElementById('auditForm');
-          const n = document.getElementById('adminNote');
-          if (f) { f.style.display = 'block'; f.classList.remove('hidden'); }
-          if (n) n.classList.add('hidden');
-          const dbg = document.getElementById('adminDebug');
-          if (dbg) dbg.textContent = 'Admin-Status: ✔︎ (url_bypass) – erzwungen sichtbar';
-        });
-      }
-    })();
-  </script>
-
-  <!-- Sichtbares Fehlerfeld (falls JS crasht) -->
-  <div id="fatalErr" style="display:none;background:#fee;border:1px solid #faa;padding:.75rem;margin:.75rem 0;border-radius:8px;color:#600">
-    <strong>Fehler:</strong> <span id="fatalMsg"></span>
-  </div>
-  <script>
-    // Zeige uncaught errors / 404 von Scripts
-    window.addEventListener('error', (e) => {
-      const box = document.getElementById('fatalErr');
-      const msg = document.getElementById('fatalMsg');
-      if (!box || !msg) return;
-      box.style.display = 'block';
-      msg.textContent = (e?.message || e?.error?.message || String(e)).slice(0, 500);
-    });
-  </script>
-
   <div class="container">
     <h1>EAZY Score</h1>
 
-    <div id="adminDebug" class="note">Admin-Status: <em>prüfe…</em></div>
-
     <p class="note">
-      Öffentliche Liste ansehen: <a href="./public.html">Letzte Bewertungen</a>
+      Öffentliche Übersicht (für alle): <a href="./public.html">Letzte Bewertungen</a>
     </p>
 
-    <!-- LOGIN -->
+    <!-- LOGIN (E-Mail + Passwort, nur für Admin) -->
     <div id="loginBox" style="margin:1rem 0; border:1px solid #ddd; padding:1rem; border-radius:8px;">
       <div id="loginInputs">
-        <label for="emailInput">E-Mail:
-          <input id="emailInput" type="email" placeholder="you@example.com" required>
-        </label>
-        <button id="btnSendOtp" type="button">Code senden</button>
-
-        <div style="margin-top:.75rem">
-          <input id="otpInput" type="text" inputmode="numeric" maxlength="8" autocomplete="one-time-code" placeholder="8-stelliger Code">
-          <button id="btnVerifyOtp" type="button">Code bestätigen</button>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+          <label>E-Mail:
+            <input id="emailInput" type="email" placeholder="you@example.com" required>
+          </label>
+          <label>Passwort:
+            <input id="pwInput" type="password" placeholder="••••••••" required>
+          </label>
+          <button id="btnLogin" type="button">Anmelden</button>
         </div>
-
         <div id="loginHint" class="note"></div>
       </div>
 
+      <!-- Status + Logout -->
       <div id="loginStatus" style="display:none; margin-top:.5rem; font-weight:600; color:green; align-items:center;">
         <span id="loginUser"></span>
         <button id="btnLogout" type="button" style="margin-left:1rem;">Logout</button>
@@ -65,12 +51,11 @@
 
     <!-- Hinweis für Nicht-Admins -->
     <div id="adminNote" class="note warn hidden">
-      Du bist eingeloggt, aber kein Admin. Bewertungen können nur Admins erstellen.
-      Ergebnisse siehst du hier: <a href="./public.html">Letzte Bewertungen</a>.
+      Du bist eingeloggt, aber kein Admin. Du wirst zur öffentlichen Übersicht geleitet…
     </div>
 
-    <!-- FORMULAR (nur Admin sichtbar – oder via ?admin=1 oben erzwungen) -->
-    <form id="auditForm" novalidate style="display:none;">
+    <!-- FORMULAR (nur Admin sichtbar) -->
+    <form id="auditForm" novalidate class="hidden">
       <fieldset>
         <legend>App-Details</legend>
         <div class="fieldstack">
@@ -139,11 +124,114 @@
     </section>
   </div>
 
-  <!-- App-Logik -->
+  <!-- App-Logik (Form/Score/Dispatch des Events) -->
   <script src="./js/app.js"></script>
 
-  <!-- Supabase-Login + Persistenz (unverändert lassen, dein vorhandenes Script) -->
+  <!-- Supabase-Login + Admin-Gate -->
   <script type="module">
-    /* dein existierender Supabase-Code bleibt hier wie zuletzt von mir geliefert */
+    import { createClient } from "https://esm.sh/@supabase/supabase-js";
+
+    const supabase = createClient(
+      "https://lhdztkfvrnsqfnbqybfq.supabase.co",
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxoZHp0a2Z2cm5zcWZuYnF5YmZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTczMjIxMjMsImV4cCI6MjA3Mjg5ODEyM30.81BVX5zf_WxE3RdTw32OttwsiMgDanXdNIkWeug-jUs"
+    );
+
+    // Refs
+    const emailEl     = document.getElementById('emailInput');
+    const pwEl        = document.getElementById('pwInput');
+    const btnLogin    = document.getElementById('btnLogin');
+    const btnLogout   = document.getElementById('btnLogout');
+    const loginInputs = document.getElementById('loginInputs');
+    const loginStatus = document.getElementById('loginStatus');
+    const loginUser   = document.getElementById('loginUser');
+    const loginHint   = document.getElementById('loginHint');
+    const auditForm   = document.getElementById('auditForm');
+    const adminNote   = document.getElementById('adminNote');
+
+    // Nur dieser Admin darf bewerten:
+    const ADMIN_EMAIL = 'mareen95@hotmail.de';
+    const ADMIN_UID   = '13455c4c-4d52-4e33-aca9-436f2daf8716'; // optionaler Sicherheits-Check
+
+    function setLoggedInUI(email){
+      loginInputs.style.display = 'none';
+      loginStatus.style.display = 'flex';
+      loginUser.textContent = `Eingeloggt: ${email}`;
+    }
+    function setLoggedOutUI(){
+      loginInputs.style.display = 'block';
+      loginStatus.style.display = 'none';
+      loginUser.textContent = '';
+    }
+    function showAdminForm(){
+      auditForm.classList.remove('hidden');
+      adminNote.classList.add('hidden');
+    }
+    function hideAdminForm(){
+      auditForm.classList.add('hidden');
+    }
+    function redirectToPublicSoon() {
+      setTimeout(() => location.replace('./public.html'), 600);
+    }
+
+    // Passwort-Login
+    btnLogin.addEventListener('click', async () => {
+      const email = (emailEl.value || '').trim().toLowerCase();
+      const password = pwEl.value || '';
+      if (!email || !password) return alert('E-Mail & Passwort eingeben.');
+
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) { alert(error.message); return; }
+
+      // Status
+      const { data: { session } } = await supabase.auth.getSession();
+      const meEmail = (session?.user?.email || '').toLowerCase();
+      const meUid   = session?.user?.id || '';
+
+      setLoggedInUI(meEmail);
+
+      // Doppel-Check: Mail & (optional) UID
+      const isMailOk = meEmail === ADMIN_EMAIL;
+      const isUidOk  = !ADMIN_UID || meUid === ADMIN_UID;
+
+      if (isMailOk && isUidOk) {
+        showAdminForm();
+        loginHint.textContent = 'Admin bestätigt.';
+        loginHint.className = 'note success';
+      } else {
+        hideAdminForm();
+        adminNote.classList.remove('hidden');
+        loginHint.textContent = 'Kein Admin-Zugang. Du wirst zur öffentlichen Übersicht geleitet.';
+        loginHint.className = 'note warn';
+        redirectToPublicSoon();
+      }
+    });
+
+    // Logout
+    btnLogout.addEventListener('click', async () => {
+      await supabase.auth.signOut();
+      setLoggedOutUI();
+      hideAdminForm();
+    });
+
+    // Initialstatus (Seite neu laden)
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const meEmail = (session?.user?.email || '').toLowerCase();
+      const meUid   = session?.user?.id || '';
+
+      if (meEmail) setLoggedInUI(meEmail);
+
+      const isMailOk = meEmail === ADMIN_EMAIL;
+      const isUidOk  = !ADMIN_UID || meUid === ADMIN_UID;
+
+      if (isMailOk && isUidOk) {
+        showAdminForm();
+      } else if (meEmail) {
+        hideAdminForm();
+        adminNote.classList.remove('hidden');
+        redirectToPublicSoon();
+      }
+    })();
   </script>
 </body>
+</html>
