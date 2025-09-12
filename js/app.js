@@ -1,5 +1,8 @@
-// ----- Fragen definieren (37 Stück) -----
-// Nur "Ja" zählt als richtig. Texte kannst du beliebig anpassen.
+**Datei:** `./js/app.js`
+
+```js
+// ----- EAZY Score: Fragenkatalog (37) -----
+// Nur "YES" (Ja) zählt als Erfüllung.
 const QUESTIONS = [
   "1. Werden nur notwendige Berechtigungen verwendet?",
   "2. Wird die Einwilligung der Nutzer abgefragt?",
@@ -40,24 +43,25 @@ const QUESTIONS = [
   "37. Lokalisierung (Tracking) kann deaktiviert werden?"
 ];
 
-const formEl = document.getElementById('auditForm');
-const questionsWrap = document.getElementById('questions');
-const resultSection = document.getElementById('resultSection');
+// ----- DOM Refs -----
+const formEl         = document.getElementById('auditForm');
+const questionsWrap  = document.getElementById('questions');
+const resultSection  = document.getElementById('resultSection');
 
-const scoreValueEl = document.getElementById('scoreValue');
-const correctMetaEl = document.getElementById('correctMeta');
-const gradeBadgeEl = document.getElementById('gradeBadge');
-const progressBarEl = document.getElementById('progressBar');
+const scoreValueEl   = document.getElementById('scoreValue');
+const correctMetaEl  = document.getElementById('correctMeta');
+const gradeBadgeEl   = document.getElementById('gradeBadge');
+const progressBarEl  = document.getElementById('progressBar');
 const progressTextEl = document.getElementById('progressText');
 
-const rAppName = document.getElementById('rAppName');
-const rVersion = document.getElementById('rVersion');
-const rCategory = document.getElementById('rCategory');
-const shortFindings = document.getElementById('shortFindings');
+const rAppName       = document.getElementById('rAppName');
+const rVersion       = document.getElementById('rVersion');
+const rCategory      = document.getElementById('rCategory');
+const shortFindings  = document.getElementById('shortFindings');
 
-const restartBtn = document.getElementById('restartBtn');
+const restartBtn     = document.getElementById('restartBtn');
 
-// Fragen ins Formular rendern
+// ----- Fragen rendern -----
 function renderQuestions() {
   questionsWrap.innerHTML = '';
   QUESTIONS.forEach((label, idx) => {
@@ -66,7 +70,7 @@ function renderQuestions() {
     row.innerHTML = `
       <span class="inline-label">${label}</span>
       <span class="inline-field">
-        <select name="q${idx+1}" required>
+        <select name="q${idx + 1}" required aria-label="${label}">
           <option value="" disabled selected>-- bitte auswählen --</option>
           <option value="YES">Ja</option>
           <option value="NO">Nein</option>
@@ -77,38 +81,42 @@ function renderQuestions() {
     questionsWrap.appendChild(row);
   });
 }
-
 renderQuestions();
 
-// Bewertung berechnen
+// ----- Notenmapping (deine Regel: <50% = F) -----
+// >=90 A, 80-89 B, 70-79 C, 60-69 D, 50-59 E, <50 F
 function gradeFromScore(score) {
   if (score >= 90) return 'A';
   if (score >= 80) return 'B';
   if (score >= 70) return 'C';
   if (score >= 60) return 'D';
   if (score >= 50) return 'E';
-  return 'F';
+  return 'F'; // unter 50% nicht bestanden
 }
 
-// Klasse für Farbbadges/-balken setzen
+// ----- Farbklassen setzen -----
 function setGradeClass(el, grade) {
   el.classList.remove('grade-A','grade-B','grade-C','grade-D','grade-E','grade-F');
   el.classList.add(`grade-${grade}`);
 }
 
-// „Kurzbefunde“ (nur ein paar Beispiele)
+// ----- Kurzbefunde (Beispiele) -----
 function buildShortFindings(answersMap) {
   const yes = (n) => answersMap[`q${n}`] === 'YES';
+  const no  = (n) => answersMap[`q${n}`] === 'NO';
   const rows = [];
-  if (yes(2)) rows.push('Einwilligung der Nutzer wird eingeholt.');
-  if (yes(12)) rows.push('Übertragung ist verschlüsselt (HTTPS).');
-  if (!yes(27)) rows.push('Kein Tracking aktiviert.'); // 27: Tracking grundsätzlich verwendet?
-  if (yes(31)) rows.push('Auftragsverarbeitung vertraglich geregelt.');
+
+  if (yes(2))  rows.push('Einwilligung der Nutzer wird eingeholt.');
+  if (yes(12)) rows.push('Transportverschlüsselung aktiv (HTTPS/TLS).');
+  if (yes(13)) rows.push('Perfect Forward Secrecy vorhanden.');
+  if (yes(31)) rows.push('Auftragsverarbeitung (DPA) geregelt.');
+  if (no(27))  rows.push('Kein Tracking aktiviert (Frage 27).');
+
   if (rows.length === 0) rows.push('Keine besonderen Positivbefunde.');
   return rows.map(t => `<div>• ${t}</div>`).join('');
 }
 
-// Submit
+// ----- Submit-Handler -----
 formEl.addEventListener('submit', (e) => {
   e.preventDefault();
 
@@ -116,18 +124,20 @@ formEl.addEventListener('submit', (e) => {
   const formData = new FormData(formEl);
   const answers = {};
   let correct = 0;
-  QUESTIONS.forEach((_, i) => {
-    const key = `q${i+1}`;
-    const val = formData.get(key) || '';
+
+  for (let i = 0; i < QUESTIONS.length; i++) {
+    const key = `q${i + 1}`;
+    const val = (formData.get(key) || '').toString();
     answers[key] = val;
     if (val === 'YES') correct += 1; // nur Ja zählt
-  });
+  }
 
   const total = QUESTIONS.length;
+  // Prozentzahl immer auf eine ganze Zahl runden
   const score = Math.round((correct * 100) / total);
   const grade = gradeFromScore(score);
 
-  // Ergebnis UI füllen
+  // Ergebnis-UI
   scoreValueEl.textContent = `${score}%`;
   correctMetaEl.textContent = `${correct} von ${total} richtigen Antworten`;
   gradeBadgeEl.textContent = grade;
@@ -137,41 +147,38 @@ formEl.addEventListener('submit', (e) => {
   progressTextEl.textContent = `${correct}/${total}`;
   setGradeClass(progressBarEl, grade);
 
-  rAppName.textContent = (formData.get('appName') || '–').trim() || '–';
-  rVersion.textContent = (formData.get('version') || '–').trim() || '–';
-  rCategory.textContent = (formData.get('category') || '–').trim() || '–';
+  const appName  = (formData.get('appName')  || '').toString().trim();
+  const version  = (formData.get('version')  || '').toString().trim();
+  const category = (formData.get('category') || '').toString().trim();
+
+  rAppName.textContent  = appName  || '–';
+  rVersion.textContent  = version  || '–';
+  rCategory.textContent = category || '–';
 
   shortFindings.innerHTML = buildShortFindings(answers);
 
-  // >>> Supabase-Persistenz: Ergebnis an das Modul melden
-document.dispatchEvent(new CustomEvent('eazy:result', {
-  detail: {
-    answers,                // z.B. { q1: "YES", q2: "NO", ... }
-    score,                  // Prozent (0..100)
-    grade,                  // "A".."F"
-    meta: {
-      appName: (formData.get('appName') || '').trim(),
-      version: (formData.get('version') || '').trim(),
-      category: (formData.get('category') || '').trim()
+  // Persistenz-Hook für Supabase (wird in index.html abgefangen)
+  document.dispatchEvent(new CustomEvent('eazy:result', {
+    detail: {
+      answers,            // z.B. { q1:"YES", q2:"NO", ... }
+      score,              // 0..100
+      grade,              // "A".."F"
+      meta: { appName, version, category }
     }
-  }
-}));
-// <<< Ende Persistenz-Hook
+  }));
 
-
-  // Umschalten: Formular aus, Ergebnis an
+  // UI umschalten
   formEl.classList.add('hidden');
   resultSection.classList.remove('hidden');
-
-  // Nach oben scrollen für Ergebnis
   window.scrollTo({ top: 0, behavior: 'smooth' });
 });
 
-// Neu bewerten
+// ----- Neu bewerten -----
 restartBtn.addEventListener('click', () => {
   formEl.reset();
-  renderQuestions();
+  renderQuestions(); // Selects neu aufbauen (setzt wieder "-- bitte auswählen --")
   resultSection.classList.add('hidden');
   formEl.classList.remove('hidden');
   window.scrollTo({ top: 0, behavior: 'smooth' });
 });
+```
