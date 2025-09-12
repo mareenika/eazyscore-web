@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>Öffentliche Bewertungen – EAZY Score</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root { --bd:#ddd; --muted:#666; }
+    body { font-family: system-ui, Arial, sans-serif; margin: 16px; }
+    h1,h2 { margin: .25rem 0 .5rem }
+    .wrap { display:grid; gap:24px; grid-template-columns: 1fr; }
+    @media (min-width: 980px){ .wrap { grid-template-columns: 2fr 1fr; } }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border:1px solid var(--bd); padding:.5rem; text-align:left; vertical-align: top; }
+    th { background:#f6f7f9; }
+    .muted { color: var(--muted); font-size:.9em }
+    .grade-A { color:#0a8f08; font-weight:700 }
+    .grade-B { color:#227a1a; font-weight:700 }
+    .grade-C { color:#b97c00; font-weight:700 }
+    .grade-D { color:#b55b00; font-weight:700 }
+    .grade-E { color:#c91b1b; font-weight:700 }
+    .grade-F { color:#7e0c0c; font-weight:700 }
+    .card { border:1px solid var(--bd); border-radius:10px; padding:14px; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; }
+    input, textarea, button { padding:.5rem; border:1px solid var(--bd); border-radius:8px; }
+    input, textarea { flex:1 1 220px; }
+    button { cursor:pointer; }
+    ul.list { list-style:none; padding:0; margin:0 }
+    ul.list li { border-top:1px solid var(--bd); padding:.5rem 0 }
+    ul.list li:first-child { border-top:0 }
+    .right { text-align:right }
+  </style>
+</head>
+<body>
+  <h1>Öffentliche EAZY-Score Übersicht</h1>
+  <p class="muted">Hier siehst du die letzten Bewertungen (read-only) und kannst neue Apps vorschlagen.</p>
+
+  <div class="wrap">
+    <!-- Linke Spalte: Bewertungen -->
+    <section class="card">
+      <h2>Letzte Bewertungen</h2>
+      <table id="ratingsTable">
+        <thead>
+          <tr>
+            <th>App</th>
+            <th>Kategorie</th>
+            <th class="right">Score</th>
+            <th>Note</th>
+            <th>Datum</th>
+          </tr>
+        </thead>
+        <tbody><tr><td colspan="5" class="muted">Lade…</td></tr></tbody>
+      </table>
+    </section>
+
+    <!-- Rechte Spalte: Vorschläge -->
+    <section class="card">
+      <h2>App vorschlagen</h2>
+      <div id="authInfo" class="muted" style="margin-bottom:.5rem;"></div>
+      <div class="row" style="margin-bottom:.5rem">
+        <input id="suggName" placeholder="App-Name *" required>
+        <input id="suggUrl" placeholder="Store-URL (optional)">
+        <input id="suggNote" placeholder="Hinweis (optional)">
+        <button id="btnSuggest" type="button">Vorschlag senden</button>
+      </div>
+      <div id="suggMsg" class="muted" style="min-height:1.2em;"></div>
+
+      <h3 style="margin-top:1rem;">Eingegangene Vorschläge</h3>
+      <ul id="suggList" class="list">
+        <li class="muted">Lade…</li>
+      </ul>
+    </section>
+  </div>
+
+  <script type="module">
+    import { createClient } from "https://esm.sh/@supabase/supabase-js";
+
+    const supabase = createClient(
+      "https://lhdztkfvrnsqfnbqybfq.supabase.co",
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxoZHp0a2Z2cm5zcWZuYnF5YmZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTczMjIxMjMsImV4cCI6MjA3Mjg5ODEyM30.81BVX5zf_WxE3RdTw32OttwsiMgDanXdNIkWeug-jUs"
+    );
+
+    const $ = (id) => document.getElementById(id);
+    const ratingsBody = document.querySelector("#ratingsTable tbody");
+
+    async function loadRatings() {
+      const { data: assessments, error } = await supabase
+        .from("v_assessments_public")
+        .select("id, app_id, total_score, grade, created_at")
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (error) {
+        ratingsBody.innerHTML = `<tr><td colspan="5" class="muted">Fehler: ${error.message}</td></tr>`;
+        return;
+      }
+      const appIds = [...new Set((assessments||[]).map(a => a.app_id))];
+      const { data: apps, error: appErr } = await supabase
+        .from("v_apps_public")
+        .select("id, name, category")
+        .in("id", appIds.length ? appIds : ['00000000-0000-0000-0000-000000000000']);
+      if (appErr) {
+        ratingsBody.innerHTML = `<tr><td colspan="5" class="muted">Fehler (Apps): ${appErr.message}</td></tr>`;
+        return;
+      }
+      const appMap = Object.fromEntries((apps||[]).map(a => [a.id, a]));
+      ratingsBody.innerHTML = "";
+      if (!assessments || assessments.length === 0) {
+        ratingsBody.innerHTML = `<tr><td colspan="5" class="muted">Noch keine Bewertungen vorhanden.</td></tr>`;
+        return;
+      }
+      assessments.forEach(a => {
+        const app = appMap[a.app_id] || { name: "Unbekannt", category: "-" };
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${app.name}</td>
+          <td>${app.category || "-"}</td>
+          <td class="right">${Number(a.total_score).toFixed(0)}%</td>
+          <td class="grade-${a.grade}">${a.grade}</td>
+          <td>${new Date(a.created_at).toLocaleString()}</td>
+        `;
+        ratingsBody.appendChild(tr);
+      });
+    }
+
+    // -------- Vorschläge ----------
+    async function refreshSuggestions() {
+      const list = $("suggList");
+      const { data, error } = await supabase
+        .from("app_suggestions")
+        .select("app_name, store_url, note, created_at")
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (error) {
+        list.innerHTML = `<li class="muted">Fehler: ${error.message}</li>`;
+        return;
+      }
+      if (!data || data.length === 0) {
+        list.innerHTML = `<li class="muted">Noch keine Vorschläge vorhanden.</li>`;
+        return;
+      }
+      list.innerHTML = "";
+      data.forEach(s => {
+        const li = document.createElement("li");
+        li.innerHTML = `
+          <div><strong>${escapeHtml(s.app_name)}</strong>
+            ${s.store_url ? ` – <a href="${escapeUrl(s.store_url)}" target="_blank" rel="noopener">Link</a>` : ""}
+          </div>
+          <div class="muted">${s.note ? escapeHtml(s.note) + " · " : ""}${new Date(s.created_at).toLocaleString()}</div>
+        `;
+        list.appendChild(li);
+      });
+    }
+
+    function escapeHtml(s='') {
+      return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    }
+    function escapeUrl(u='') {
+      try { const url = new URL(u); return url.href; } catch { return '#'; }
+    }
+
+    async function showAuthInfo() {
+      const { data: { session } } = await supabase.auth.getSession();
+      $("authInfo").textContent = session?.user?.email
+        ? `Eingeloggt als ${session.user.email} – du kannst Vorschläge senden.`
+        : `Nicht eingeloggt – Vorschläge senden erfordert Login auf der Hauptseite (index.html).`;
+    }
+
+    $("btnSuggest").addEventListener("click", async () => {
+      const name = $("suggName").value.trim();
+      const url  = $("suggUrl").value.trim();
+      const note = $("suggNote").value.trim();
+      const msg  = $("suggMsg");
+
+      if (!name) { msg.textContent = "Bitte App-Name angeben."; return; }
+
+      // prüfen ob eingeloggt (Policy verlangt authenticated)
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
+        msg.textContent = "Bitte zuerst auf der Hauptseite einloggen (E-Mail-Code).";
+        return;
+      }
+
+      msg.textContent = "Sende…";
+      const { error } = await supabase
+        .from("app_suggestions")
+        .insert({ app_name: name, store_url: url || null, note: note || null });
+      if (error) {
+        msg.textContent = "Fehler: " + error.message;
+      } else {
+        msg.textContent = "Danke! Vorschlag gespeichert.";
+        $("suggName").value = "";
+        $("suggUrl").value  = "";
+        $("suggNote").value = "";
+        refreshSuggestions();
+      }
+    });
+
+    // Initial laden
+    await loadRatings();
+    await refreshSuggestions();
+    await showAuthInfo();
+
+    // Falls sich der Login-Status in einem anderen Tab ändert
+    supabase.auth.onAuthStateChange(() => showAuthInfo());
+  </script>
+</body>
+</html>
