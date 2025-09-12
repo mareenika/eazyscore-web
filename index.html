@@ -28,8 +28,7 @@
         <button id="btnSendOtp" type="button">Code senden</button>
 
         <div style="margin-top:.75rem">
-          <input id="otpInput" type="text" inputmode="numeric" pattern="[0-9]*"
-                 maxlength="8" autocomplete="one-time-code" placeholder="8-stelliger Code">
+          <input id="otpInput" type="text" inputmode="numeric" maxlength="8" autocomplete="one-time-code" placeholder="8-stelliger Code">
           <button id="btnVerifyOtp" type="button">Code bestätigen</button>
         </div>
 
@@ -37,15 +36,15 @@
       </div>
 
       <!-- Status + Logout -->
-      <div id="loginStatus" style="display:none; margin-top:.5rem; font-weight:600; color:green">
+      <div id="loginStatus" style="display:none; margin-top:.5rem; font-weight:600; color:green; align-items:center;">
         <span id="loginUser"></span>
         <button id="btnLogout" type="button" style="margin-left:1rem;">Logout</button>
       </div>
     </div>
     <!-- ENDE LOGIN -->
 
-    <!-- FORMULAR -->
-    <form id="auditForm" novalidate>
+    <!-- FORMULAR (nur Admin sichtbar) -->
+    <form id="auditForm" novalidate style="display:none;">
       <fieldset>
         <legend>App-Details</legend>
         <div class="fieldstack">
@@ -113,56 +112,42 @@
     </section>
   </div>
 
-  <!-- Meine App-Logik -->
+  <!-- App-Logik -->
   <script src="./js/app.js"></script>
 
   <!-- Supabase-Login + Persistenz -->
   <script type="module">
     import { createClient } from "https://esm.sh/@supabase/supabase-js";
 
-    // === Supabase Setup ===
-    const SUPABASE_URL  = "https://lhdztkfvrnsqfnbqybfq.supabase.co";
-    const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxoZHp0a2Z2cm5zcWZuYnF5YmZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTczMjIxMjMsImV4cCI6MjA3Mjg5ODEyM30.81BVX5zf_WxE3RdTw32OttwsiMgDanXdNIkWeug-jUs";
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
+    const supabase = createClient(
+      "https://lhdztkfvrnsqfnbqybfq.supabase.co",
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxoZHp0a2Z2cm5zcWZuYnF5YmZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTczMjIxMjMsImV4cCI6MjA3Mjg5ODEyM30.81BVX5zf_WxE3RdTw32OttwsiMgDanXdNIkWeug-jUs"
+    );
 
     // === UI Refs ===
-    const loginBox   = document.getElementById('loginBox');
-    const loginInputs= document.getElementById('loginInputs');
-    const loginStatus= document.getElementById('loginStatus');
-    const loginUser  = document.getElementById('loginUser');
-    const btnLogout  = document.getElementById('btnLogout');
-    const loginHint  = document.getElementById('loginHint');
-    const emailEl    = document.getElementById('emailInput');
-    const otpEl      = document.getElementById('otpInput');
-    const sendBtn    = document.getElementById('btnSendOtp');
-    const verifyBtn  = document.getElementById('btnVerifyOtp');
+    const loginInputs = document.getElementById('loginInputs');
+    const loginStatus = document.getElementById('loginStatus');
+    const loginUser   = document.getElementById('loginUser');
+    const btnLogout   = document.getElementById('btnLogout');
+    const loginHint   = document.getElementById('loginHint');
+    const emailEl     = document.getElementById('emailInput');
+    const otpEl       = document.getElementById('otpInput');
+    const sendBtn     = document.getElementById('btnSendOtp');
+    const verifyBtn   = document.getElementById('btnVerifyOtp');
+    const auditForm   = document.getElementById('auditForm');
 
-    // === State ===
     let lastEmailSent = null;
     let sendLockUntil = 0;
 
     const normalizeEmail = v => (v || '').trim().toLowerCase();
 
-    // Fullwidth / arabische Ziffern -> ASCII 0–9
-    function normalizeDigits(str) {
-      if (!str) return '';
-      str = str.replace(/[\uFF10-\uFF19]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFF10 + 0x30));
-      str = str.replace(/[\u0660-\u0669]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0x0660 + 0x30));
-      str = str.replace(/[\u06F0-\u06F9]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0x06F0 + 0x30));
-      return str;
-    }
     function cleanToken(v) {
-      return normalizeDigits(v || '')
-        .replace(/[\u200B-\u200D\uFEFF]/g, '')
-        .replace(/[\u00A0\s\-_.,]/g, '')
-        .replace(/[^0-9]/g, '')
-        .trim();
+      return (v||'').replace(/\D/g,'').slice(0,8);
     }
 
     function setLoggedInUI(identity) {
       loginInputs.style.display = 'none';
       loginStatus.style.display = 'flex';
-      loginStatus.style.alignItems = 'center';
       loginUser.textContent = `Eingeloggt: ${identity}`;
     }
     function setLoggedOutUI() {
@@ -171,215 +156,88 @@
       loginUser.textContent = '';
     }
 
-    // ===== Enter-Key nur für Login benutzen =====
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && loginBox.contains(document.activeElement)) {
-        e.preventDefault();
-        e.stopPropagation();
-        verifyBtn.click();
-      }
-    });
-
-    // ===== OTP Eingabe: nur 8 Ziffern, Paste säubern =====
-    otpEl.setAttribute('maxlength','8');
-    otpEl.addEventListener('input', () => {
-      const cleaned = cleanToken(otpEl.value).slice(0, 8);
-      if (otpEl.value !== cleaned) otpEl.value = cleaned;
-    });
-    otpEl.addEventListener('paste', e => {
-      e.preventDefault();
-      const text = (e.clipboardData || window.clipboardData).getData('text');
-      otpEl.value = cleanToken(text).slice(0, 8);
-    });
-
-    // ===== Send-Button Sperre (60s) =====
-    function startSendLock(seconds = 60) {
-      sendLockUntil = Date.now() + seconds * 1000;
-      updateSendButton();
-      const tick = setInterval(() => {
-        if (Date.now() >= sendLockUntil) {
-          clearInterval(tick);
-          updateSendButton();
-        } else {
-          updateSendButton();
-        }
-      }, 250);
-    }
-    function updateSendButton() {
-      const now = Date.now();
-      if (now < sendLockUntil) {
-        const secs = Math.max(1, Math.ceil((sendLockUntil - now) / 1000));
-        sendBtn.disabled = true;
-        sendBtn.textContent = `Code senden (${secs}s)`;
-      } else {
-        sendBtn.disabled = false;
-        sendBtn.textContent = 'Code senden';
-      }
-    }
-
-    // ===== Code senden =====
+    // OTP senden
     sendBtn.addEventListener('click', async () => {
-      if (Date.now() < sendLockUntil) return;
-
+      if (!emailEl.value) return alert('Bitte E-Mail eingeben.');
       const email = normalizeEmail(emailEl.value);
-      if (!email) return alert('Bitte E-Mail eingeben.');
-
-      emailEl.value = email;
-      emailEl.readOnly = true;
-
-      sendBtn.disabled = true;
-      try {
-        const { error } = await supabase.auth.signInWithOtp({ email });
-        if (error) {
-          alert(error.message);
-          loginHint.textContent = '';
-          emailEl.readOnly = false;
-          return;
-        }
-        lastEmailSent = email;
-        loginHint.textContent = `E-Mail gesendet an ${email}. Nutze den NEUESTEN 8-stelligen Code (ältere Codes werden ungültig).`;
-        alert('Code gesendet. Prüfe deine E-Mail (neueste Nachricht) – dann Code hier eingeben.');
-        otpEl.focus();
-        startSendLock(60);
-      } finally {
-        // Entsperren übernimmt der Lock-Timer
-      }
+      const { error } = await supabase.auth.signInWithOtp({ email });
+      if (error) { alert(error.message); return; }
+      lastEmailSent = email;
+      loginHint.textContent = `Code an ${email} gesendet.`;
+      alert('Code gesendet. Prüfe deine E-Mail.');
     });
 
-    // ===== OTP verifizieren (mit Typ-Fallbacks) =====
+    // OTP verifizieren
     verifyBtn.addEventListener('click', async () => {
       const email = normalizeEmail(emailEl.value);
       const token = cleanToken(otpEl.value);
+      if (!email || token.length !== 8) return alert('E-Mail und 8-stelligen Code eingeben.');
 
-      if (!email || !token) return alert('E-Mail und Code eingeben.');
-      if (token.length !== 8) return alert('Bitte den 8-stelligen Code vollständig eingeben.');
-      if (lastEmailSent && email !== lastEmailSent) {
-        return alert(`Diese E-Mail (${email}) unterscheidet sich von der Adresse, an die der Code gesendet wurde (${lastEmailSent}). Bitte korrigieren oder neuen Code senden.`);
-      }
-
-      const tryTypes = ['email', 'signup', 'recovery'];
-      let finalError = null;
-      for (const t of tryTypes) {
-        const { error } = await supabase.auth.verifyOtp({ email, token, type: t });
-        if (!error) { finalError = null; break; }
-        finalError = error;
-        if (!/invalid|expired/i.test(error.message)) break;
-      }
-
-      if (finalError) {
-        if (/expired/i.test(finalError.message)) {
-          alert('Code abgelaufen. Bitte neuen Code anfordern und sofort verwenden.');
-        } else if (/invalid/i.test(finalError.message)) {
-          alert('Code ungültig. Bitte NUR den neuesten Code aus der letzten E-Mail verwenden (kein älterer).');
-        } else {
-          alert(finalError.message);
-        }
-        return;
-      }
-
+      const { error } = await supabase.auth.verifyOtp({ email, token, type: 'email' });
+      if (error) { alert(error.message); return; }
       setLoggedInUI(email);
+      await guardAdminUI();
     });
 
-    // ===== Logout =====
+    // Logout
     btnLogout.addEventListener('click', async () => {
       await supabase.auth.signOut();
       setLoggedOutUI();
-      emailEl.readOnly = false;
-      emailEl.value = '';
-      otpEl.value = '';
-      loginHint.textContent = '';
-      sendLockUntil = 0;
-      updateSendButton();
-      alert('Abgemeldet.');
+      auditForm.style.display = 'none';
     });
 
-    // ===== Status beim Laden/Änderungen =====
-    async function updateStatus() {
+    // Admin-Check
+    async function isAdmin() {
       const { data: { session } } = await supabase.auth.getSession();
-      const email = session?.user?.email;
-      if (email) {
-        setLoggedInUI(email);
-        emailEl.value = email;
-        emailEl.readOnly = true;
-        sendLockUntil = 0;
-        updateSendButton();
-      } else {
-        setLoggedOutUI();
-        emailEl.readOnly = false;
-      }
-      return session?.user ?? null;
+      const uid = session?.user?.id;
+      if (!uid) return false;
+      const { data, error } = await supabase.from('admins').select('user_id').eq('user_id', uid).single();
+      return !!data && !error;
     }
-    await updateStatus();
-    supabase.auth.onAuthStateChange((_evt, session) => {
-      const email = session?.user?.email;
-      if (email) setLoggedInUI(email); else setLoggedOutUI();
-    });
 
-    // Initial
-    updateSendButton();
+    async function guardAdminUI() {
+      const admin = await isAdmin();
+      auditForm.style.display = admin ? 'block' : 'none';
+    }
 
-    // ================== PERSISTENZ: Apps & Assessments speichern ==================
+    // Initial Status
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user?.email) setLoggedInUI(session.user.email);
+      await guardAdminUI();
+    })();
+    supabase.auth.onAuthStateChange(() => guardAdminUI());
+
+    // === DB-Persistenz für Ergebnisse ===
     function slugify(s) {
-      return (s||'').toLowerCase().trim()
-        .replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+      return (s||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,"-").replace(/(^-|-$)/g,"");
     }
 
     async function getOrCreateApp({ bundleId, name, category }) {
-      let { data: apps, error } = await supabase
-        .from("apps").select("*").eq("bundle_id", bundleId).limit(1);
-      if (error) throw error;
-      if (apps?.length) return apps[0];
-
-      const { data, error: insErr } = await supabase
-        .from("apps")
-        .insert({ bundle_id: bundleId, name, category })
-        .select()
-        .single();
-      if (insErr) throw insErr;
+      let { data: apps } = await supabase.from("apps").select("*").eq("bundle_id", bundleId).limit(1);
+      if (apps && apps.length) return apps[0];
+      const { data } = await supabase.from("apps").insert({ bundle_id: bundleId, name, category }).select().single();
       return data;
     }
 
     async function saveAssessment({ appId, answers, totalScore, grade }) {
-      const { error } = await supabase.from("assessments").insert({
-        app_id: appId,
-        answers,
-        total_score: Math.round(Number(totalScore) || 0),
-        grade
-      });
-      if (error) throw error;
+      await supabase.from("assessments").insert({ app_id: appId, answers, total_score: totalScore, grade });
     }
 
-    // Event-Livecheck (hilft beim Debuggen)
-    document.addEventListener('eazy:result', () => console.log('eazy:result empfangen'));
-
-    // Ergebnis entgegennehmen und speichern
     document.addEventListener('eazy:result', async (ev) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) { alert("Bitte einloggen."); return; }
+
       try {
-        // 1) Session prüfen
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.user) { alert("Bitte zuerst einloggen, dann speichern."); return; }
-
-        // 2) Payload aus Event
-        const { answers, score, grade, meta } = ev.detail || {};
-        const appName  = meta?.appName || document.getElementById('appName')?.value || 'Unbenannte App';
-        const version  = meta?.version || document.getElementById('version')?.value || 'v1';
-        const category = meta?.category || document.getElementById('category')?.value || null;
-
-        // 3) App holen/erstellen
-        const bundleId = slugify(`${appName}-${version}`);
-        const app = await getOrCreateApp({ bundleId, name: appName, category });
-
-        // 4) Assessment speichern
-        await saveAssessment({ appId: app.id, answers: answers || {}, totalScore: score ?? 0, grade: grade || 'F' });
-
-        console.log("✔️ Bewertung gespeichert:", { app: app.name, score, grade });
+        const { answers, score, grade, meta } = ev.detail;
+        const bundleId = slugify(`${meta.appName||'unbenannte'}-${meta.version||'v1'}`);
+        const app = await getOrCreateApp({ bundleId, name: meta.appName||'Unbenannte App', category: meta.category });
+        await saveAssessment({ appId: app.id, answers, totalScore: score, grade });
         alert("Bewertung gespeichert.");
       } catch (e) {
-        console.error("❌ Speichern fehlgeschlagen:", e);
-        alert("Fehler beim Speichern: " + (e?.message || e));
+        alert("Fehler beim Speichern: " + (e?.message||e));
       }
     });
-    // ================== /PERSISTENZ ==================
   </script>
 </body>
 </html>
