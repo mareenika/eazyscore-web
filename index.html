@@ -146,16 +146,16 @@
     // Fullwidth / arabische Ziffern -> ASCII 0–9
     function normalizeDigits(str) {
       if (!str) return '';
-      str = str.replace(/[\uFF10-\uFF19]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFF10 + 0x30)); // fullwidth
-      str = str.replace(/[\u0660-\u0669]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0x0660 + 0x30)); // arabic-indic
-      str = str.replace(/[\u06F0-\u06F9]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0x06F0 + 0x30)); // eastern arabic
+      str = str.replace(/[\uFF10-\uFF19]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFF10 + 0x30));
+      str = str.replace(/[\u0660-\u0669]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0x0660 + 0x30));
+      str = str.replace(/[\u06F0-\u06F9]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0x06F0 + 0x30));
       return str;
     }
     function cleanToken(v) {
       return normalizeDigits(v || '')
-        .replace(/[\u200B-\u200D\uFEFF]/g, '') // zero-width
-        .replace(/[\u00A0\s\-_.,]/g, '')       // NBSP/Spaces/Trenner
-        .replace(/[^0-9]/g, '')                // nur Ziffern
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .replace(/[\u00A0\s\-_.,]/g, '')
+        .replace(/[^0-9]/g, '')
         .trim();
     }
 
@@ -224,7 +224,6 @@
       const email = normalizeEmail(emailEl.value);
       if (!email) return alert('Bitte E-Mail eingeben.');
 
-      // E-Mail nach dem Senden fixieren (Verwechslungen vermeiden)
       emailEl.value = email;
       emailEl.readOnly = true;
 
@@ -278,14 +277,12 @@
         return;
       }
 
-      // Erfolg → UI sofort umschalten
       setLoggedInUI(email);
     });
 
     // ===== Logout =====
     btnLogout.addEventListener('click', async () => {
       await supabase.auth.signOut();
-      // UI & Felder zurücksetzen
       setLoggedOutUI();
       emailEl.readOnly = false;
       emailEl.value = '';
@@ -320,6 +317,69 @@
 
     // Initial
     updateSendButton();
+
+    // ================== PERSISTENZ: Apps & Assessments speichern ==================
+    function slugify(s) {
+      return (s||'').toLowerCase().trim()
+        .replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+    }
+
+    async function getOrCreateApp({ bundleId, name, category }) {
+      let { data: apps, error } = await supabase
+        .from("apps").select("*").eq("bundle_id", bundleId).limit(1);
+      if (error) throw error;
+      if (apps?.length) return apps[0];
+
+      const { data, error: insErr } = await supabase
+        .from("apps")
+        .insert({ bundle_id: bundleId, name, category })
+        .select()
+        .single();
+      if (insErr) throw insErr;
+      return data;
+    }
+
+    async function saveAssessment({ appId, answers, totalScore, grade }) {
+      const { error } = await supabase.from("assessments").insert({
+        app_id: appId,
+        answers,
+        total_score: Math.round(Number(totalScore) || 0),
+        grade
+      });
+      if (error) throw error;
+    }
+
+    // Event-Livecheck (hilft beim Debuggen)
+    document.addEventListener('eazy:result', () => console.log('eazy:result empfangen'));
+
+    // Ergebnis entgegennehmen und speichern
+    document.addEventListener('eazy:result', async (ev) => {
+      try {
+        // 1) Session prüfen
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) { alert("Bitte zuerst einloggen, dann speichern."); return; }
+
+        // 2) Payload aus Event
+        const { answers, score, grade, meta } = ev.detail || {};
+        const appName  = meta?.appName || document.getElementById('appName')?.value || 'Unbenannte App';
+        const version  = meta?.version || document.getElementById('version')?.value || 'v1';
+        const category = meta?.category || document.getElementById('category')?.value || null;
+
+        // 3) App holen/erstellen
+        const bundleId = slugify(`${appName}-${version}`);
+        const app = await getOrCreateApp({ bundleId, name: appName, category });
+
+        // 4) Assessment speichern
+        await saveAssessment({ appId: app.id, answers: answers || {}, totalScore: score ?? 0, grade: grade || 'F' });
+
+        console.log("✔️ Bewertung gespeichert:", { app: app.name, score, grade });
+        alert("Bewertung gespeichert.");
+      } catch (e) {
+        console.error("❌ Speichern fehlgeschlagen:", e);
+        alert("Fehler beim Speichern: " + (e?.message || e));
+      }
+    });
+    // ================== /PERSISTENZ ==================
   </script>
 </body>
 </html>
