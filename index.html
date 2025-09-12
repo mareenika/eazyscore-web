@@ -22,7 +22,6 @@
   <div class="container">
     <h1>EAZY Score</h1>
 
-    <!-- Link zur öffentlichen Übersicht -->
     <p class="note">
       Öffentliche Liste ansehen: <a href="./public.html">Letzte Bewertungen</a>
     </p>
@@ -54,7 +53,7 @@
     <!-- Hinweis für Nicht-Admins -->
     <div id="adminNote" class="note warn hidden">
       Du bist eingeloggt, aber kein Admin. Bewertungen können nur Admins erstellen.
-      Die Ergebnisse sind öffentlich hier sichtbar: <a href="./public.html">Letzte Bewertungen</a>.
+      Ergebnisse siehst du hier: <a href="./public.html">Letzte Bewertungen</a>.
     </div>
 
     <!-- FORMULAR (nur Admin sichtbar) -->
@@ -122,6 +121,7 @@
 
       <div class="footer">
         <button id="restartBtn" class="btn-primary" type="button">Neu bewerten</button>
+        <button type="button" class="btn-secondary" style="margin-left:.5rem" onclick="location.href='./public.html'">← Zur öffentlichen Übersicht</button>
       </div>
     </section>
   </div>
@@ -152,16 +152,13 @@
     const auditForm  = document.getElementById('auditForm');
     const adminNote  = document.getElementById('adminNote');
 
-    // Enter im Login-Bereich soll NICHT das Formular abschicken
+    // Enter im Login-Bereich NICHT Formular absenden lassen
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && loginBox.contains(document.activeElement)) {
-        e.preventDefault();
-        e.stopPropagation();
+        e.preventDefault(); e.stopPropagation();
         verifyBtn.click();
       }
     });
-
-    let lastEmailSent = null;
 
     const normalizeEmail = v => (v || '').trim().toLowerCase();
     const cleanToken = v => (v||'').replace(/[^\d]/g,'').slice(0,8);
@@ -183,13 +180,12 @@
       if (!email) return alert('Bitte E-Mail eingeben.');
       const { error } = await supabase.auth.signInWithOtp({ email });
       if (error) { alert(error.message); return; }
-      lastEmailSent = email;
       loginHint.className = 'note success';
       loginHint.textContent = `Code an ${email} gesendet. Nutze den neuesten Code.`;
       alert('Code gesendet. Prüfe deine E-Mail.');
     });
 
-    // OTP verifizieren (mit kleinen Fallbacks)
+    // OTP verifizieren (mit Fallbacks)
     verifyBtn.addEventListener('click', async () => {
       const email = normalizeEmail(emailEl.value);
       const token = cleanToken(otpEl.value);
@@ -216,24 +212,33 @@
       adminNote.classList.add('hidden');
     });
 
-    // Admin-Check
+    // Admin-Check (mit temporärem Mail-Fallback für dich)
     async function isAdmin() {
       const { data: { session } } = await supabase.auth.getSession();
       const uid = session?.user?.id;
-      if (!uid) return false;
-      const { data, error } = await supabase.from('admins').select('user_id').eq('user_id', uid).single();
-      return !!data && !error;
+      const email = session?.user?.email?.toLowerCase();
+      if (!uid) return { ok:false, reason:'not_logged_in' };
+      if (email === 'mareen95@hotmail.de') return { ok:true, reason:'email_fallback' }; // optional: später entfernen
+
+      const { data, error } = await supabase
+        .from('admins')
+        .select('user_id')
+        .eq('user_id', uid)
+        .maybeSingle();
+
+      if (error) return { ok:false, reason:'query_error', error };
+      return { ok: !!data, reason: data ? 'db_match' : 'not_in_admins' };
     }
 
     async function guardAdminUI() {
-      const admin = await isAdmin();
-      if (admin) {
+      const res = await isAdmin();
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (res.ok) {
         auditForm.style.display = 'block';
         adminNote.classList.add('hidden');
       } else {
         auditForm.style.display = 'none';
-        // Nur zeigen, wenn eingeloggt (sonst doppelte Hinweise)
-        const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) adminNote.classList.remove('hidden');
         else adminNote.classList.add('hidden');
       }
@@ -247,7 +252,7 @@
     })();
     supabase.auth.onAuthStateChange(() => guardAdminUI());
 
-    // === DB-Persistenz für Ergebnisse ===
+    // === DB-Persistenz: App & Assessment speichern ===
     function slugify(s) {
       return (s||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,"-").replace(/(^-|-$)/g,"");
     }
