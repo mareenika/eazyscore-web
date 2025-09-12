@@ -13,11 +13,19 @@
     legend{font-weight:700}
     .hidden{display:none}
     .footer{display:flex;justify-content:flex-start}
+    .note{margin:.5rem 0;color:#555;font-size:.95em}
+    .warn{color:#a33}
+    .success{color:green}
   </style>
 </head>
 <body>
   <div class="container">
     <h1>EAZY Score</h1>
+
+    <!-- Link zur öffentlichen Übersicht -->
+    <p class="note">
+      Öffentliche Liste ansehen: <a href="./public.html">Letzte Bewertungen</a>
+    </p>
 
     <!-- LOGIN (OTP per E-Mail) -->
     <div id="loginBox" style="margin:1rem 0; border:1px solid #ddd; padding:1rem; border-radius:8px;">
@@ -32,7 +40,7 @@
           <button id="btnVerifyOtp" type="button">Code bestätigen</button>
         </div>
 
-        <div id="loginHint" style="margin-top:.5rem;font-size:.9em;color:#555"></div>
+        <div id="loginHint" class="note"></div>
       </div>
 
       <!-- Status + Logout -->
@@ -42,6 +50,12 @@
       </div>
     </div>
     <!-- ENDE LOGIN -->
+
+    <!-- Hinweis für Nicht-Admins -->
+    <div id="adminNote" class="note warn hidden">
+      Du bist eingeloggt, aber kein Admin. Bewertungen können nur Admins erstellen.
+      Die Ergebnisse sind öffentlich hier sichtbar: <a href="./public.html">Letzte Bewertungen</a>.
+    </div>
 
     <!-- FORMULAR (nur Admin sichtbar) -->
     <form id="auditForm" novalidate style="display:none;">
@@ -125,25 +139,32 @@
     );
 
     // === UI Refs ===
-    const loginInputs = document.getElementById('loginInputs');
-    const loginStatus = document.getElementById('loginStatus');
-    const loginUser   = document.getElementById('loginUser');
-    const btnLogout   = document.getElementById('btnLogout');
-    const loginHint   = document.getElementById('loginHint');
-    const emailEl     = document.getElementById('emailInput');
-    const otpEl       = document.getElementById('otpInput');
-    const sendBtn     = document.getElementById('btnSendOtp');
-    const verifyBtn   = document.getElementById('btnVerifyOtp');
-    const auditForm   = document.getElementById('auditForm');
+    const loginBox   = document.getElementById('loginBox');
+    const loginInputs= document.getElementById('loginInputs');
+    const loginStatus= document.getElementById('loginStatus');
+    const loginUser  = document.getElementById('loginUser');
+    const btnLogout  = document.getElementById('btnLogout');
+    const loginHint  = document.getElementById('loginHint');
+    const emailEl    = document.getElementById('emailInput');
+    const otpEl      = document.getElementById('otpInput');
+    const sendBtn    = document.getElementById('btnSendOtp');
+    const verifyBtn  = document.getElementById('btnVerifyOtp');
+    const auditForm  = document.getElementById('auditForm');
+    const adminNote  = document.getElementById('adminNote');
+
+    // Enter im Login-Bereich soll NICHT das Formular abschicken
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && loginBox.contains(document.activeElement)) {
+        e.preventDefault();
+        e.stopPropagation();
+        verifyBtn.click();
+      }
+    });
 
     let lastEmailSent = null;
-    let sendLockUntil = 0;
 
     const normalizeEmail = v => (v || '').trim().toLowerCase();
-
-    function cleanToken(v) {
-      return (v||'').replace(/\D/g,'').slice(0,8);
-    }
+    const cleanToken = v => (v||'').replace(/[^\d]/g,'').slice(0,8);
 
     function setLoggedInUI(identity) {
       loginInputs.style.display = 'none';
@@ -158,23 +179,31 @@
 
     // OTP senden
     sendBtn.addEventListener('click', async () => {
-      if (!emailEl.value) return alert('Bitte E-Mail eingeben.');
       const email = normalizeEmail(emailEl.value);
+      if (!email) return alert('Bitte E-Mail eingeben.');
       const { error } = await supabase.auth.signInWithOtp({ email });
       if (error) { alert(error.message); return; }
       lastEmailSent = email;
-      loginHint.textContent = `Code an ${email} gesendet.`;
+      loginHint.className = 'note success';
+      loginHint.textContent = `Code an ${email} gesendet. Nutze den neuesten Code.`;
       alert('Code gesendet. Prüfe deine E-Mail.');
     });
 
-    // OTP verifizieren
+    // OTP verifizieren (mit kleinen Fallbacks)
     verifyBtn.addEventListener('click', async () => {
       const email = normalizeEmail(emailEl.value);
       const token = cleanToken(otpEl.value);
       if (!email || token.length !== 8) return alert('E-Mail und 8-stelligen Code eingeben.');
 
-      const { error } = await supabase.auth.verifyOtp({ email, token, type: 'email' });
-      if (error) { alert(error.message); return; }
+      let lastErr = null;
+      for (const type of ['email','signup','recovery']) {
+        const { error } = await supabase.auth.verifyOtp({ email, token, type });
+        if (!error) { lastErr = null; break; }
+        lastErr = error;
+        if (!/invalid|expired/i.test(error.message)) break;
+      }
+      if (lastErr) { alert(lastErr.message); return; }
+
       setLoggedInUI(email);
       await guardAdminUI();
     });
@@ -184,6 +213,7 @@
       await supabase.auth.signOut();
       setLoggedOutUI();
       auditForm.style.display = 'none';
+      adminNote.classList.add('hidden');
     });
 
     // Admin-Check
@@ -197,7 +227,16 @@
 
     async function guardAdminUI() {
       const admin = await isAdmin();
-      auditForm.style.display = admin ? 'block' : 'none';
+      if (admin) {
+        auditForm.style.display = 'block';
+        adminNote.classList.add('hidden');
+      } else {
+        auditForm.style.display = 'none';
+        // Nur zeigen, wenn eingeloggt (sonst doppelte Hinweise)
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) adminNote.classList.remove('hidden');
+        else adminNote.classList.add('hidden');
+      }
     }
 
     // Initial Status
@@ -214,14 +253,21 @@
     }
 
     async function getOrCreateApp({ bundleId, name, category }) {
-      let { data: apps } = await supabase.from("apps").select("*").eq("bundle_id", bundleId).limit(1);
-      if (apps && apps.length) return apps[0];
-      const { data } = await supabase.from("apps").insert({ bundle_id: bundleId, name, category }).select().single();
+      const { data: found, error: selErr } = await supabase
+        .from("apps").select("*").eq("bundle_id", bundleId).limit(1);
+      if (selErr) throw selErr;
+      if (found && found.length) return found[0];
+      const { data, error: insErr } = await supabase
+        .from("apps").insert({ bundle_id: bundleId, name, category }).select().single();
+      if (insErr) throw insErr;
       return data;
     }
 
     async function saveAssessment({ appId, answers, totalScore, grade }) {
-      await supabase.from("assessments").insert({ app_id: appId, answers, total_score: totalScore, grade });
+      const { error } = await supabase
+        .from("assessments")
+        .insert({ app_id: appId, answers, total_score: Math.round(totalScore||0), grade });
+      if (error) throw error;
     }
 
     document.addEventListener('eazy:result', async (ev) => {
@@ -230,11 +276,17 @@
 
       try {
         const { answers, score, grade, meta } = ev.detail;
-        const bundleId = slugify(`${meta.appName||'unbenannte'}-${meta.version||'v1'}`);
-        const app = await getOrCreateApp({ bundleId, name: meta.appName||'Unbenannte App', category: meta.category });
+        const appName  = (meta?.appName || '').trim() || 'Unbenannte App';
+        const version  = (meta?.version || '').trim() || 'v1';
+        const category = (meta?.category || '').trim() || null;
+
+        const bundleId = slugify(`${appName}-${version}`);
+        const app = await getOrCreateApp({ bundleId, name: appName, category });
         await saveAssessment({ appId: app.id, answers, totalScore: score, grade });
         alert("Bewertung gespeichert.");
+        console.log("✔ gespeichert:", { app: appName, score, grade });
       } catch (e) {
+        console.error("❌ Speichern fehlgeschlagen:", e);
         alert("Fehler beim Speichern: " + (e?.message||e));
       }
     });
