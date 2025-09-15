@@ -120,10 +120,10 @@
     </section>
   </div>
 
-  <!-- App-Logik -->
+  <!-- App-Logik (rendert Fragen & feuert eazy:result) -->
   <script src="./js/app.js"></script>
 
-  <!-- Supabase Login -->
+  <!-- Supabase + Login + Speichern -->
   <script type="module">
     import { createClient } from "https://esm.sh/@supabase/supabase-js";
 
@@ -162,6 +162,8 @@
     }
 
     async function guardAdminUI() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) { setLoggedOutUI(); return; }
       if (await isAdmin()) {
         auditForm.style.display = 'block';
         adminNote.classList.add('hidden');
@@ -196,9 +198,66 @@
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user?.email) {
         setLoggedInUI(session.user.email);
-        await guardAdminUI();
+      } else {
+        setLoggedOutUI();
       }
+      await guardAdminUI();
     })();
+
+    // ====== SPEICHERN (NEU) – reagiert auf eazy:result von app.js ======
+    function slugify(s){return (s||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');}
+
+    async function getOrCreateApp({ bundleId, name, category }) {
+      const sel = await supabase.from("apps").select("*").eq("bundle_id", bundleId).limit(1);
+      if (sel.error) throw sel.error;
+      if (sel.data?.length) return sel.data[0];
+      const ins = await supabase.from("apps").insert({ bundle_id: bundleId, name, category }).select().single();
+      if (ins.error) throw ins.error;
+      return ins.data;
+    }
+
+    async function saveAssessment({ appId, answers, totalScore, grade }) {
+      const ins = await supabase
+        .from("assessments")
+        .insert({ app_id: appId, answers, total_score: Math.round(totalScore||0), grade })
+        .select().single();
+      if (ins.error) throw ins.error;
+      return ins.data;
+    }
+
+    async function requireAdmin() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) { alert("Bitte zuerst einloggen."); return false; }
+      if (!(await isAdmin())) { alert("Du bist eingeloggt, aber kein Admin – Speichern blockiert."); return false; }
+      return true;
+    }
+
+    document.addEventListener('eazy:result', async (ev) => {
+      if (!(await requireAdmin())) return;
+
+      try {
+        const { answers, score, grade, meta } = ev.detail;
+        const appName  = (meta?.appName || '').trim() || 'Unbenannte App';
+        const version  = (meta?.version || '').trim() || 'v1';
+        const category = (meta?.category || '').trim() || null;
+        const bundleId = slugify(`${appName}-${version}`);
+
+        console.log('[EAZY] Speichern…', { appName, version, category, bundleId, score, grade });
+
+        const app = await getOrCreateApp({ bundleId, name: appName, category });
+        console.log('[EAZY] App ok', app);
+
+        const row = await saveAssessment({ appId: app.id, answers, totalScore: score, grade });
+        console.log('[EAZY] Assessment ok', row);
+
+        alert("Bewertung gespeichert. Öffne öffentliche Übersicht…");
+        setTimeout(() => location.href = './public.html?t=' + Date.now(), 600);
+      } catch (e) {
+        console.error('[EAZY] Speichern fehlgeschlagen', e);
+        alert('Fehler beim Speichern: ' + (e?.message || e));
+      }
+    });
+    // ====== /SPEICHERN ======
   </script>
 </body>
 </html>
