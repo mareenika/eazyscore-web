@@ -204,14 +204,29 @@
       await guardAdminUI();
     })();
 
-    // ====== SPEICHERN (NEU) – reagiert auf eazy:result von app.js ======
+    // ====== SPEICHERN – reagiert auf eazy:result von app.js ======
     function slugify(s){return (s||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');}
 
-    async function getOrCreateApp({ bundleId, name, category }) {
+    // << geändert: version wird berücksichtigt >>
+    async function getOrCreateApp({ bundleId, name, category, version }) {
+      // existiert?
       const sel = await supabase.from("apps").select("*").eq("bundle_id", bundleId).limit(1);
       if (sel.error) throw sel.error;
-      if (sel.data?.length) return sel.data[0];
-      const ins = await supabase.from("apps").insert({ bundle_id: bundleId, name, category }).select().single();
+      if (sel.data?.length) {
+        const app = sel.data[0];
+        // Version/Name/Kategorie aktualisieren (idempotent)
+        const upd = await supabase.from("apps")
+          .update({ version, name, category })
+          .eq("id", app.id);
+        if (upd.error) throw upd.error;
+        return app;
+      }
+      // neu anlegen
+      const ins = await supabase
+        .from("apps")
+        .insert({ bundle_id: bundleId, name, category, version })
+        .select()
+        .single();
       if (ins.error) throw ins.error;
       return ins.data;
     }
@@ -244,7 +259,8 @@
 
         console.log('[EAZY] Speichern…', { appName, version, category, bundleId, score, grade });
 
-        const app = await getOrCreateApp({ bundleId, name: appName, category });
+        // << geändert: version wird übergeben >>
+        const app = await getOrCreateApp({ bundleId, name: appName, category, version });
         console.log('[EAZY] App ok', app);
 
         const row = await saveAssessment({ appId: app.id, answers, totalScore: score, grade });
