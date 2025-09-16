@@ -1,186 +1,219 @@
-<!doctype html>
-<html lang="de">
-<head>
-  <meta charset="utf-8">
-  <title>EAZY Score – Öffentliche Übersicht</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link href="./css/style.css" rel="stylesheet">
-  <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial}
-    .wrap{max-width:1000px;margin:0 auto;padding:1rem}
-    header{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap}
-    .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-top:12px}
-    .card{border:1px solid #e5e7eb;border-radius:12px;padding:12px;background:#fff}
-    .muted{color:#6b7280}
-    .tag{display:inline-block;padding:.1rem .5rem;border-radius:999px;border:1px solid #e5e7eb;font-size:.8rem}
-    .score{font-size:1.6rem;font-weight:700}
-    .grade{font-weight:700}
-    .table{width:100%;border-collapse:collapse;margin-top:8px;background:#fff;border-radius:12px;overflow:hidden}
-    .table th,.table td{padding:.6rem;border-bottom:1px solid #eee;text-align:left;vertical-align:top}
-    .table th{background:#f8fafc}
-    .toolbar{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin:.5rem 0}
-    input[type="search"]{padding:.5rem;border:1px solid #ccc;border-radius:8px;min-width:220px}
-    .empty{padding:1rem;border:1px dashed #ddd;border-radius:12px;color:#6b7280;background:#fff}
-    .error{padding:.75rem;border:1px solid #fca5a5;background:#fef2f2;color:#7f1d1d;border-radius:8px}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <header>
-      <h1>EAZY Score – Öffentliche Übersicht</h1>
-      <nav>
-        <a class="tag" href="./index.html">→ Admin / Login</a>
-      </nav>
-    </header>
+<script type="module">
+  import { createClient } from "https://esm.sh/@supabase/supabase-js";
 
-    <section id="latest">
-      <h2>Letzte Bewertungen</h2>
-      <div class="toolbar">
-        <input id="search" type="search" placeholder="App suchen…">
-        <span id="count" class="muted"></span>
-      </div>
-      <div id="cards" class="cards"></div>
-      <div id="latestEmpty" class="empty" style="display:none">Noch keine Bewertungen vorhanden.</div>
-      <div id="latestErr" class="error" style="display:none"></div>
-    </section>
+  const supabase = createClient(
+    "https://lhdztkfvrnsqfnbqybfq.supabase.co",
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxoZHp0a2Z2cm5zcWZuYnF5YmZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTczMjIxMjMsImV4cCI6MjA3Mjg5ODEyM30.81BVX5zf_WxE3RdTw32OttwsiMgDanXdNIkWeug-jUs"
+  );
 
-    <section id="apps">
-      <h2 style="margin-top:1.25rem">Apps (Katalog)</h2>
-      <table class="table" id="appsTable">
-        <thead>
-          <tr>
-            <th>App</th>
-            <th>Version</th>
-            <th>Kategorie</th>
-            <th>Prozent</th>
-            <th>Note</th>
-            <th class="muted">Zuletzt bewertet</th>
-          </tr>
-        </thead>
-        <tbody id="appsTbody"></tbody>
-      </table>
-      <div id="appsEmpty" class="empty" style="display:none">Noch keine Apps im Katalog.</div>
-      <div id="appsErr" class="error" style="display:none"></div>
-    </section>
-  </div>
+  const cards = document.getElementById('cards');
+  const searchInput = document.getElementById('search');
+  const countEl = document.getElementById('count');
+  const latestEmpty = document.getElementById('latestEmpty');
+  const latestErr = document.getElementById('latestErr');
 
-  <script type="module">
-    import { createClient } from "https://esm.sh/@supabase/supabase-js";
+  const appsTbody = document.getElementById('appsTbody');
+  const appsEmpty = document.getElementById('appsEmpty');
+  const appsErr = document.getElementById('appsErr');
 
-    const supabase = createClient(
-      "https://lhdztkfvrnsqfnbqybfq.supabase.co",
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxoZHp0a2Z2cm5zcWZuYnF5YmZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTczMjIxMjMsImV4cCI6MjA3Mjg5ODEyM30.81BVX5zf_WxE3RdTw32OttwsiMgDanXdNIkWeug-jUs"
-    );
+  // Vorschläge
+  const suggForm = document.getElementById('suggForm');
+  const suggName = document.getElementById('suggName');
+  const suggUrl  = document.getElementById('suggUrl');
+  const suggNote = document.getElementById('suggNote');
+  const suggMsg  = document.getElementById('suggMsg');
+  const suggTbody= document.getElementById('suggTbody');
+  const suggEmpty= document.getElementById('suggEmpty');
+  const suggErr  = document.getElementById('suggErr');
+  const hp       = document.getElementById('hp');
 
-    const cards = document.getElementById('cards');
-    const searchInput = document.getElementById('search');
-    const countEl = document.getElementById('count');
-    const latestEmpty = document.getElementById('latestEmpty');
-    const latestErr = document.getElementById('latestErr');
+  const fmtDate = iso => new Date(iso).toLocaleString('de-DE', { dateStyle:'medium', timeStyle:'short' });
+  const escape = s => (s||'').replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
 
-    const appsTbody = document.getElementById('appsTbody');
-    const appsEmpty = document.getElementById('appsEmpty');
-    const appsErr = document.getElementById('appsErr');
+  // ---------- Laden & Rendern ----------
+  let cache = { apps: [], assessments: [], suggestions: [] };
 
-    const fmtDate = iso => iso ? new Date(iso).toLocaleString('de-DE', { dateStyle:'medium', timeStyle:'short' }) : '–';
-    const escape = s => (s||'').replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
-    const gradeColor = g => ({A:'#16a34a',B:'#22c55e',C:'#84cc16',D:'#eab308',E:'#f59e0b',F:'#ef4444'}[g] || '#6b7280');
+  async function loadAppsAndAssessments() {
+    latestErr.style.display = 'none';
+    try {
+      const [appsRes, assessRes] = await Promise.all([
+        supabase.from('v_apps_public').select('*').order('name', { ascending:true }).limit(1000),
+        supabase.from('v_assessments_public').select('*').order('created_at', { ascending:false }).limit(1000)
+      ]);
+      if (appsRes.error) throw appsRes.error;
+      if (assessRes.error) throw assessRes.error;
 
-    async function loadCatalog(){
-      const { data, error } = await supabase
-        .from('v_app_catalog')
-        .select('*')
-        .limit(500);
-      if (error) throw error;
-      return data || [];
+      cache.apps = appsRes.data || [];
+      cache.assessments = assessRes.data || [];
+      renderAll();
+    } catch (err) {
+      console.error(err);
+      latestErr.textContent = 'Fehler beim Laden der Bewertungen: ' + (err?.message || err);
+      latestErr.style.display = 'block';
     }
+  }
 
-    function renderCards(rows){
+  function renderAll() {
+    // Indexe
+    const appById = Object.create(null);
+    cache.apps.forEach(a => { appById[a.id] = a; });
+
+    // Neueste Bewertung je App
+    const latestByApp = new Map();
+    cache.assessments.forEach(a => {
+      if (!latestByApp.has(a.app_id)) latestByApp.set(a.app_id, a);
+    });
+    const latestPerApp = Array.from(latestByApp.values())
+      .sort((a,b)=> new Date(b.created_at)-new Date(a.created_at))
+      .slice(0, 100);
+
+    function gradeColor(g){ return ({A:'#16a34a',B:'#22c55e',C:'#84cc16',D:'#eab308',E:'#f59e0b',F:'#ef4444'}[g] || '#6b7280'); }
+
+    function renderCards(list){
       cards.innerHTML = '';
-      if (!rows.length) {
-        latestEmpty.style.display = 'block';
-        countEl.textContent = '0 Einträge';
-        return;
-      }
+      if (!list.length) { latestEmpty.style.display = 'block'; countEl.textContent = '0 Einträge'; return; }
       latestEmpty.style.display = 'none';
-      countEl.textContent = `${rows.length} Einträge`;
-
-      // Zeige die 100 neuesten Bewertungen (nach last_rated_at sortiert)
-      const list = rows
-        .slice()
-        .sort((a,b)=> new Date(b.last_rated_at||0) - new Date(a.last_rated_at||0))
-        .slice(0,100);
-
-      list.forEach(r => {
-        const name = escape(r.name) || 'Unbekannte App';
-        const version = escape(r.version) || '–';
-        const cat = escape(r.category) || '–';
-        const pct = r.last_score == null ? '–' : `${Math.round(r.last_score)}%`;
-        const grade = r.last_grade || '–';
-        const when = fmtDate(r.last_rated_at);
+      list.forEach(a => {
+        const app = appById[a.app_id] || {};
+        const name = escape(app.name)||'Unbekannte App';
+        const cat  = escape(app.category)||'–';
+        const score = a.total_score ?? 0;
+        const grade = a.grade || '–';
+        const when  = fmtDate(a.created_at);
         const el = document.createElement('div');
         el.className = 'card';
         el.innerHTML = `
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.25rem;gap:.5rem">
-            <div style="font-weight:600">${name} <span class="muted">· ${version}</span></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.25rem">
+            <div style="font-weight:600">${name}${app.version ? ` <span class="muted">(${escape(app.version)})</span>`:''}</div>
             <span class="tag">${cat}</span>
           </div>
-          <div class="score" style="color:${gradeColor(grade)}">${pct}</div>
+          <div class="score" style="color:${gradeColor(grade)}">${Math.round(score)}%</div>
           <div class="grade" style="color:${gradeColor(grade)}">Note ${grade}</div>
           <div class="muted" style="margin-top:.25rem">${when}</div>
         `;
         cards.appendChild(el);
       });
+      countEl.textContent = `${list.length} Einträge`;
     }
 
-    function renderAppsTable(rows){
-      appsTbody.innerHTML = '';
-      if (!rows.length) {
-        appsEmpty.style.display = 'block';
-        return;
-      }
+    // Suche
+    const q = (searchInput.value||'').trim().toLowerCase();
+    const list = !q ? latestPerApp : latestPerApp.filter(a => {
+      const app = appById[a.app_id] || {};
+      return (app.name||'').toLowerCase().includes(q) ||
+             (app.category||'').toLowerCase().includes(q) ||
+             (app.version||'').toLowerCase().includes(q);
+    });
+    renderCards(list);
+
+    // Katalog (alphabetisch)
+    appsTbody.innerHTML = '';
+    if (!cache.apps.length) {
+      appsEmpty.style.display = 'block';
+    } else {
       appsEmpty.style.display = 'none';
-
-      // Alphabetisch sortieren (nach App-Name)
-      const sorted = rows.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
-
-      sorted.forEach(r => {
+      cache.apps.forEach(a => {
         const tr = document.createElement('tr');
-        const pct = r.last_score == null ? '–' : `${Math.round(r.last_score)}%`;
         tr.innerHTML = `
-          <td>${escape(r.name)||'–'}</td>
-          <td>${escape(r.version)||'–'}</td>
-          <td>${escape(r.category)||'–'}</td>
-          <td>${pct}</td>
-          <td style="color:${gradeColor(r.last_grade||'')}}">${r.last_grade || '–'}</td>
-          <td class="muted">${fmtDate(r.last_rated_at)}</td>
+          <td>${escape(a.name)}</td>
+          <td>${escape(a.version)||'–'}</td>
+          <td>${escape(a.category)||'–'}</td>
+          <td class="muted">${escape(a.bundle_id)||'–'}</td>
+          <td class="muted">${fmtDate(a.created_at)}</td>
         `;
         appsTbody.appendChild(tr);
       });
     }
+  }
 
-    try {
-      const catalog = await loadCatalog();
-      renderCards(catalog);
-      renderAppsTable(catalog);
+  searchInput.addEventListener('input', renderAll);
 
-      // Suche über Karten (Name/Kategorie/Version)
-      searchInput.addEventListener('input', () => {
-        const q = searchInput.value.trim().toLowerCase();
-        const filtered = catalog.filter(r =>
-          (r.name||'').toLowerCase().includes(q) ||
-          (r.category||'').toLowerCase().includes(q) ||
-          (r.version||'').toLowerCase().includes(q)
-        );
-        renderCards(filtered);
-      });
-    } catch (err) {
-      console.error(err);
-      latestErr.textContent = 'Fehler beim Laden: ' + (err?.message || err);
-      latestErr.style.display = 'block';
-      appsErr.textContent = 'Fehler beim Laden: ' + (err?.message || err);
-      appsErr.style.display = 'block';
+  // ---------- Vorschläge ----------
+  async function loadSuggestions(){
+    suggErr.style.display = 'none';
+    suggTbody.innerHTML = '';
+    suggEmpty.style.display = 'none';
+
+    const { data, error } = await supabase
+      .from('app_suggestions')
+      .select('id, app_name, store_url, note, created_at')
+      .order('created_at', { ascending:false })
+      .limit(200);
+    if (error) {
+      suggErr.textContent = 'Fehler beim Laden der Vorschläge: ' + error.message;
+      suggErr.style.display = 'block';
+      return;
     }
-  </script>
-</body>
-</html>
+    cache.suggestions = data || [];
+    if (!cache.suggestions.length) {
+      suggEmpty.style.display = 'block';
+      return;
+    }
+    cache.suggestions.forEach(s => {
+      const tr = document.createElement('tr');
+      tr.dataset.id = s.id;
+      tr.innerHTML = `
+        <td>${escape(s.app_name)}</td>
+        <td class="muted">${s.store_url ? `<a href="${escape(s.store_url)}" target="_blank" rel="noopener">Link</a>` : '–'}</td>
+        <td class="muted">${escape(s.note)||'–'}</td>
+        <td class="muted">${fmtDate(s.created_at)}</td>
+      `;
+      suggTbody.appendChild(tr);
+    });
+  }
+
+  // Vorschlag einreichen (Gäste erlaubt) + Honeypot
+  const hp = document.getElementById('hp');
+  const suggFormEl = document.getElementById('suggForm');
+  suggFormEl?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    suggMsg.textContent = '';
+    suggErr.style.display = 'none';
+    if (hp.value) return; // Bot
+
+    const name = (suggName.value||'').trim();
+    const url  = (suggUrl.value||'').trim();
+    const note = (suggNote.value||'').trim();
+    if (!name) { suggMsg.textContent = 'Bitte App-Name angeben.'; return; }
+
+    const { error } = await supabase.from('app_suggestions').insert({
+      app_name: name, store_url: url || null, note: note || null
+    });
+    if (error) {
+      suggErr.textContent = 'Fehler beim Senden: ' + error.message;
+      suggErr.style.display = 'block';
+      return;
+    }
+    suggName.value=''; suggUrl.value=''; suggNote.value='';
+    suggMsg.textContent = 'Danke! Vorschlag wurde gespeichert.';
+    await loadSuggestions();
+  });
+
+  // ---------- Realtime-Updates (löschen/einfügen/ändern sehen Gäste sofort) ----------
+  function setupRealtime() {
+    const ch = supabase.channel('public_live');
+
+    // assessments (bewertete Einträge)
+    ch.on('postgres_changes', { event: '*', schema: 'public', table: 'assessments' }, async () => {
+      await loadAppsAndAssessments();
+    });
+
+    // apps (wenn Admin App löscht/bearbeitet)
+    ch.on('postgres_changes', { event: '*', schema: 'public', table: 'apps' }, async () => {
+      await loadAppsAndAssessments();
+    });
+
+    // Vorschläge (Gäste/Admins)
+    ch.on('postgres_changes', { event: '*', schema: 'public', table: 'app_suggestions' }, async () => {
+      await loadSuggestions();
+    });
+
+    ch.subscribe((status) => {
+      // optional: console.log('Realtime status:', status);
+    });
+  }
+
+  // Init
+  await Promise.all([loadAppsAndAssessments(), loadSuggestions()]);
+  setupRealtime();
+</script>
