@@ -28,9 +28,7 @@
   <div class="wrap">
     <header>
       <h1>EAZY Score – Öffentliche Übersicht</h1>
-      <nav>
-        <a class="tag" href="./index.html">→ Admin / Login</a>
-      </nav>
+      <nav><a class="tag" href="./index.html">→ Admin / Login</a></nav>
     </header>
 
     <section id="latest">
@@ -51,8 +49,10 @@
           <tr>
             <th>App</th>
             <th>Kategorie</th>
-            <th class="muted">Bundle-ID</th>
-            <th class="muted">Erstellt</th>
+            <th class="muted">Version</th>
+            <th class="muted">Score</th>
+            <th class="muted">Note</th>
+            <th class="muted">Zuletzt bewertet</th>
           </tr>
         </thead>
         <tbody id="appsTbody"></tbody>
@@ -80,178 +80,82 @@
     const appsEmpty = document.getElementById('appsEmpty');
     const appsErr = document.getElementById('appsErr');
 
-    const fmtDate = iso => new Date(iso).toLocaleString('de-DE', { dateStyle:'medium', timeStyle:'short' });
+    const fmtDate = iso => iso ? new Date(iso).toLocaleString('de-DE',{dateStyle:'medium',timeStyle:'short'}) : '–';
     const escape = s => (s||'').replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
     const gradeColor = g => ({A:'#16a34a',B:'#22c55e',C:'#84cc16',D:'#eab308',E:'#f59e0b',F:'#ef4444'}[g] || '#6b7280');
 
-    let APPS = [];
-    let APP_BY_ID = Object.create(null);
-    let SCORES = [];
-    let ASSESS = []; // nur Fallback
-
-    function renderLatestFromScores() {
-      cards.innerHTML = '';
-      const merged = SCORES
-        .map(s => {
-          const app = APP_BY_ID[s.app_id] || {};
-          return {
-            app_id: s.app_id,
-            name: app.name || 'Unbekannte App',
-            category: app.category || '–',
-            score: s.last_score ?? 0,
-            grade: s.last_grade || '–',
-            when: s.last_rated_at || app.created_at
-          };
-        })
-        .sort((a,b)=> new Date(b.when) - new Date(a.when));
-
-      if (!merged.length) {
-        latestEmpty.style.display = 'block';
-        countEl.textContent = '0 Einträge';
-        return;
-      }
-      latestEmpty.style.display = 'none';
-
-      merged.forEach(x => {
-        const el = document.createElement('div');
-        el.className = 'card';
-        el.innerHTML = `
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.25rem">
-            <div style="font-weight:600">${escape(x.name)}</div>
-            <span class="tag">${escape(x.category)}</span>
-          </div>
-          <div class="score" style="color:${gradeColor(x.grade)}">${Math.round(x.score)}%</div>
-          <div class="grade" style="color:${gradeColor(x.grade)}">Note ${x.grade}</div>
-          <div class="muted" style="margin-top:.25rem">${fmtDate(x.when)}</div>
-        `;
-        cards.appendChild(el);
-      });
-      countEl.textContent = `${merged.length} Einträge`;
-
-      // Live-Suche (nach Name/Kategorie)
-      searchInput.oninput = () => {
-        const q = searchInput.value.trim().toLowerCase();
-        const filtered = merged.filter(x =>
-          x.name.toLowerCase().includes(q) || x.category.toLowerCase().includes(q)
-        );
-        cards.innerHTML = '';
-        (filtered.length ? filtered : []).forEach(x => {
-          const el = document.createElement('div');
-          el.className = 'card';
-          el.innerHTML = `
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.25rem">
-              <div style="font-weight:600">${escape(x.name)}</div>
-              <span class="tag">${escape(x.category)}</span>
-            </div>
-            <div class="score" style="color:${gradeColor(x.grade)}">${Math.round(x.score)}%</div>
-            <div class="grade" style="color:${gradeColor(x.grade)}">Note ${x.grade}</div>
-            <div class="muted" style="margin-top:.25rem">${fmtDate(x.when)}</div>
-          `;
-          cards.appendChild(el);
-        });
-        countEl.textContent = `${filtered.length} Einträge`;
-      };
-    }
-
-    function renderLatestFallbackFromAssessments(){
-      // Falls app_scores leer ist, nehmen wir v_assessments_public (neuste je App)
-      const latestByApp = new Map();
-      (ASSESS||[]).forEach(a => { if (!latestByApp.has(a.app_id)) latestByApp.set(a.app_id, a); });
-      const list = Array.from(latestByApp.values()).sort((a,b)=> new Date(b.created_at)-new Date(a.created_at));
-
-      cards.innerHTML = '';
-      if (!list.length) {
-        latestEmpty.style.display = 'block';
-        countEl.textContent = '0 Einträge';
-        return;
-      }
-      latestEmpty.style.display = 'none';
-
-      list.forEach(a => {
-        const app = APP_BY_ID[a.app_id] || {};
-        const el = document.createElement('div');
-        el.className = 'card';
-        el.innerHTML = `
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.25rem">
-            <div style="font-weight:600">${escape(app.name || 'Unbekannte App')}</div>
-            <span class="tag">${escape(app.category || '–')}</span>
-          </div>
-          <div class="score" style="color:${gradeColor(a.grade)}">${Math.round(a.total_score ?? 0)}%</div>
-          <div class="grade" style="color:${gradeColor(a.grade)}">Note ${a.grade || '–'}</div>
-          <div class="muted" style="margin-top:.25rem">${fmtDate(a.created_at)}</div>
-        `;
-        cards.appendChild(el);
-      });
-      countEl.textContent = `${list.length} Einträge`;
-
-      searchInput.oninput = () => {
-        const q = searchInput.value.trim().toLowerCase();
-        const filtered = list.filter(a => {
-          const app = APP_BY_ID[a.app_id] || {};
-          return (app.name||'').toLowerCase().includes(q) || (app.category||'').toLowerCase().includes(q);
-        });
-        cards.innerHTML = '';
-        filtered.forEach(a => {
-          const app = APP_BY_ID[a.app_id] || {};
-          const el = document.createElement('div');
-          el.className = 'card';
-          el.innerHTML = `
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.25rem">
-              <div style="font-weight:600">${escape(app.name || 'Unbekannte App')}</div>
-              <span class="tag">${escape(app.category || '–')}</span>
-            </div>
-            <div class="score" style="color:${gradeColor(a.grade)}">${Math.round(a.total_score ?? 0)}%</div>
-            <div class="grade" style="color:${gradeColor(a.grade)}">Note ${a.grade || '–'}</div>
-            <div class="muted" style="margin-top:.25rem">${fmtDate(a.created_at)}</div>
-          `;
-          cards.appendChild(el);
-        });
-        countEl.textContent = `${filtered.length} Einträge`;
-      };
-    }
-
-    function renderAppsTable(){
-      appsTbody.innerHTML = '';
-      const appsSorted = [...APPS].sort((a,b)=>(a.name||'').localeCompare(b.name||''));
-      if (!appsSorted.length) { appsEmpty.style.display = 'block'; return; }
-      appsEmpty.style.display = 'none';
-
-      appsSorted.forEach(a => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${escape(a.name)}</td>
-          <td>${escape(a.category)||'–'}</td>
-          <td class="muted">${escape(a.bundle_id)||'–'}</td>
-          <td class="muted">${fmtDate(a.created_at)}</td>
-        `;
-        appsTbody.appendChild(tr);
-      });
-    }
-
     try {
-      // parallel laden
-      const [appsRes, scoresRes, assessRes] = await Promise.all([
-        supabase.from('v_apps_public').select('*').order('name', { ascending:true }).limit(500),
-        supabase.from('app_scores').select('*').order('last_rated_at', { ascending:false }).limit(500),
-        supabase.from('v_assessments_public').select('*').order('created_at', { ascending:false }).limit(500)
-      ]);
-      if (appsRes.error) throw appsRes.error;
-      if (scoresRes.error) throw scoresRes.error;
-      if (assessRes.error) console.warn('Assessments View nicht verfügbar:', assessRes.error);
+      // Holt NUR Apps mit letzter Bewertung (=> last_score != null)
+      const { data: catalog, error } = await supabase
+        .from('v_app_catalog')
+        .select('*')
+        .not('last_score','is',null)     // filter: nur Apps mit Bewertung
+        .order('last_rated_at', { ascending:false })
+        .limit(1000);
 
-      APPS = appsRes.data || [];
-      APP_BY_ID = Object.create(null);
-      APPS.forEach(a => APP_BY_ID[a.id] = a);
+      if (error) throw error;
 
-      SCORES = scoresRes.data || [];
-      ASSESS = assessRes.data || [];
+      // === Letzte Bewertungen (Karten) ===
+      function renderCards(list){
+        cards.innerHTML = '';
+        if (!list.length) {
+          latestEmpty.style.display = 'block';
+          countEl.textContent = '0 Einträge';
+          return;
+        }
+        latestEmpty.style.display = 'none';
+        list.forEach(row => {
+          const el = document.createElement('div');
+          el.className = 'card';
+          const grade = row.last_grade || '–';
+          const score = Math.round(row.last_score ?? 0);
+          el.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.25rem">
+              <div style="font-weight:600">${escape(row.name||'Unbekannte App')}</div>
+              <span class="tag">${escape(row.category||'–')}</span>
+            </div>
+            <div class="score" style="color:${gradeColor(grade)}">${score}%</div>
+            <div class="grade" style="color:${gradeColor(grade)}">Note ${grade}</div>
+            <div class="muted" style="margin-top:.25rem">${fmtDate(row.last_rated_at)}</div>
+          `;
+          cards.appendChild(el);
+        });
+        countEl.textContent = `${list.length} Einträge`;
+      }
 
-      // Karten aus app_scores, Fallback auf assessments wenn leer
-      if (SCORES.length > 0) renderLatestFromScores();
-      else renderLatestFallbackFromAssessments();
+      const latestList = (catalog || []).slice().sort((a,b)=>new Date(b.last_rated_at)-new Date(a.last_rated_at));
+      renderCards(latestList);
 
-      // Katalog
-      renderAppsTable();
+      // Live-Suche (filtert Karten)
+      searchInput.addEventListener('input', () => {
+        const q = searchInput.value.trim().toLowerCase();
+        if (!q) return renderCards(latestList);
+        const filtered = latestList.filter(x =>
+          (x.name||'').toLowerCase().includes(q) || (x.category||'').toLowerCase().includes(q)
+        );
+        renderCards(filtered);
+      });
+
+      // === Katalog (alphabetisch) ===
+      appsTbody.innerHTML = '';
+      const byName = (catalog || []).slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+      if (!byName.length) {
+        appsEmpty.style.display = 'block';
+      } else {
+        appsEmpty.style.display = 'none';
+        byName.forEach(a => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${escape(a.name)}</td>
+            <td>${escape(a.category)||'–'}</td>
+            <td class="muted">${escape(a.version)||'–'}</td>
+            <td class="muted">${a.last_score!=null ? Math.round(a.last_score)+'%' : '–'}</td>
+            <td class="muted">${escape(a.last_grade||'–')}</td>
+            <td class="muted">${fmtDate(a.last_rated_at)}</td>
+          `;
+          appsTbody.appendChild(tr);
+        });
+      }
     } catch (err) {
       console.error(err);
       latestErr.textContent = 'Fehler beim Laden der Bewertungen: ' + (err?.message || err);
