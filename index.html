@@ -2,500 +2,298 @@
 <html lang="de">
 <head>
   <meta charset="utf-8">
-  <title>EAZY Score</title>
+  <title>EAZY Score – Öffentliche Übersicht</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link href="./css/style.css" rel="stylesheet">
   <style>
-    form .question{display:flex;gap:12px;align-items:center;margin:.5rem 0;flex-wrap:wrap}
-    .inline-label{min-width:280px;font-weight:600}
-    .inline-field select,.inline-field input{padding:.5rem;border:1px solid #ccc;border-radius:6px}
-    fieldset{border:1px solid #e2e8f0;border-radius:8px;padding:1rem;margin:1rem 0}
-    legend{font-weight:700}
-    .hidden{display:none}
-    .footer{display:flex;justify-content:flex-start}
-    .note{margin:.5rem 0;color:#555;font-size:.95em}
-    .warn{color:#a33}
-    .success{color:green}
-
-    /* Admin-Konsole */
-    .admin-box{margin-top:1.25rem;border:1px solid #e5e7eb;border-radius:12px;background:#fff}
-    .admin-head{display:flex;justify-content:space-between;align-items:center;padding:.75rem 1rem;border-bottom:1px solid #e5e7eb}
-    .admin-title{font-weight:700}
-    .table{width:100%;border-collapse:collapse}
-    .table th,.table td{padding:.6rem;border-bottom:1px solid #eee;text-align:left;vertical-align:top}
-    .table th{background:#f8fafc}
-    .btn{padding:.35rem .6rem;border:1px solid #ddd;border-radius:8px;cursor:pointer;background:#fff}
-    .btn:hover{background:#f3f4f6}
-    .btn-danger{border-color:#ef4444;color:#b91c1c}
-    .row-edit{background:#fcfdfc}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial}
+    .wrap{max-width:1000px;margin:0 auto;padding:1rem}
+    header{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap}
+    .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-top:12px}
+    .card{border:1px solid #e5e7eb;border-radius:12px;padding:12px;background:#fff}
     .muted{color:#6b7280}
-    input.inline{width:160px;max-width:100%}
-    @media (max-width:900px){ .hide-md{display:none} }
-    @media (max-width:700px){ .hide-sm{display:none} }
+    .tag{display:inline-block;padding:.1rem .5rem;border-radius:999px;border:1px solid #e5e7eb;font-size:.8rem}
+    .score{font-size:1.6rem;font-weight:700}
+    .grade{font-weight:700}
+    .table{width:100%;border-collapse:collapse;margin-top:8px;background:#fff;border-radius:12px;overflow:hidden}
+    .table th,.table td{padding:.6rem;border-bottom:1px solid #eee;text-align:left}
+    .table th{background:#f8fafc}
+    .toolbar{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin:.5rem 0}
+    input[type="search"], input[type="text"], input[type="url"], textarea{padding:.5rem;border:1px solid #ccc;border-radius:8px;min-width:220px}
+    textarea{min-height:84px;width:100%}
+    .empty{padding:1rem;border:1px dashed #ddd;border-radius:12px;color:#6b7280;background:#fff}
+    .error{padding:.75rem;border:1px solid #fca5a5;background:#fef2f2;color:#7f1d1d;border-radius:8px}
+    .box{border:1px solid #e5e7eb;border-radius:12px;background:#fff;padding:12px}
+    .row{display:flex;gap:.75rem;flex-wrap:wrap}
+    .btn{padding:.5rem .8rem;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer}
+    .btn:hover{background:#f3f4f6}
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>EAZY Score</h1>
+  <div class="wrap">
+    <header>
+      <h1>EAZY Score – Öffentliche Übersicht</h1>
+      <nav>
+        <a class="tag" href="./index.html">→ Admin / Login</a>
+      </nav>
+    </header>
 
-    <p class="note">
-      Öffentliche Liste ansehen: <a href="./public.html">Letzte Bewertungen</a>
-    </p>
-
-    <!-- LOGIN -->
-    <form id="loginForm" style="margin:1rem 0; border:1px solid #ddd; padding:1rem; border-radius:8px;">
-      <label for="emailInput">E-Mail:
-        <input id="emailInput" type="email" placeholder="you@example.com" required>
-      </label>
-      <label for="pwInput">Passwort:
-        <input id="pwInput" type="password" required>
-      </label>
-      <button id="btnLogin" type="submit">Anmelden</button>
-      <div id="loginHint" class="note"></div>
-    </form>
-
-    <!-- Status + Logout -->
-    <div id="loginStatus" style="display:none; margin:1rem 0; font-weight:600; color:green; align-items:center;">
-      <span id="loginUser"></span>
-      <button id="btnLogout" type="button" style="margin-left:1rem;">Logout</button>
-    </div>
-
-    <!-- Hinweis für Nicht-Admins -->
-    <div id="adminNote" class="note warn hidden">
-      Du bist eingeloggt, aber kein Admin. Bewertungen können nur Admins erstellen.
-      Ergebnisse siehst du hier: <a href="./public.html">Letzte Bewertungen</a>.
-    </div>
-
-    <!-- FORMULAR (nur Admin sichtbar) -->
-    <form id="auditForm" novalidate style="display:none;">
-      <fieldset>
-        <legend>App-Details</legend>
-        <div class="fieldstack">
-          <label for="appName">App-Name</label>
-          <input id="appName" name="appName" placeholder="z. B. BeispielApp">
-        </div>
-        <div class="fieldstack">
-          <label for="version">Version</label>
-          <input id="version" name="version" placeholder="z. B. 1.0.0">
-        </div>
-        <div class="fieldstack">
-          <label for="category">Kategorie</label>
-          <input id="category" name="category" placeholder="z. B. Gesundheit">
-        </div>
-      </fieldset>
-
-      <fieldset>
-        <legend>Antwortmöglichkeiten (Ja / Nein / Unbekannt)</legend>
-        <div id="questions"></div>
-      </fieldset>
-
-      <div class="footer">
-        <button type="submit" class="btn-primary">Bewerten</button>
-      </div>
-    </form>
-
-    <!-- Ergebnis -->
-    <section id="resultSection" class="score-card hidden" aria-live="polite">
-      <div class="top-row">
-        <div class="score-block">
-          <div class="score-label">Gesamt-Score</div>
-          <div id="scoreValue" class="score-value">0%</div>
-          <div class="small-meta"><span id="correctMeta">0 von 0 richtigen Antworten</span></div>
-        </div>
-        <div class="grade-block">
-          <div class="grade-label">Note</div>
-          <div id="gradeBadge" class="grade-badge grade-F">F</div>
-        </div>
-      </div>
-
-      <div class="progress-wrapper" aria-label="Score Fortschritt">
-        <div class="progress-container">
-          <div id="progressBar" class="progress-bar grade-F" style="width:0%;">
-            <span id="progressText">0/0</span>
+    <!-- Vorschlagsformular (Gäste dürfen einreichen) -->
+    <section id="suggest">
+      <h2>App vorschlagen</h2>
+      <div class="box">
+        <form id="suggForm">
+          <div class="row">
+            <input id="suggName" type="text" placeholder="App-Name (Pflicht)" required>
+            <input id="suggUrl"  type="url"  placeholder="Store-URL (optional, https://…)" style="min-width:340px">
           </div>
-        </div>
+          <div style="margin-top:.5rem">
+            <textarea id="suggNote" placeholder="Hinweis/Begründung (optional)"></textarea>
+          </div>
+          <!-- Honeypot gegen Bots -->
+          <input id="hp" type="text" style="position:absolute;left:-9999px;top:-9999px" tabindex="-1" autocomplete="off">
+          <div style="margin-top:.75rem;display:flex;gap:.5rem;align-items:center">
+            <button class="btn" type="submit">Vorschlag senden</button>
+            <span id="suggMsg" class="muted"></span>
+          </div>
+        </form>
       </div>
 
-      <div class="meta-grid">
-        <div class="meta-col">
-          <div class="section-title">App-Details</div>
-          <div><span class="label-key">App-Name: </span><span id="rAppName">–</span></div>
-          <div><span class="label-key">Version: </span><span id="rVersion">–</span></div>
-          <div><span class="label-key">Kategorie: </span><span id="rCategory">–</span></div>
-        </div>
-        <div class="meta-col">
-          <div class="section-title">Kurzbefunde</div>
-          <div id="shortFindings"></div>
-        </div>
-      </div>
-
-      <div class="footer">
-        <button id="restartBtn" class="btn-primary" type="button">Neu bewerten</button>
-        <button type="button" class="btn-secondary" style="margin-left:.5rem" onclick="location.href='./public.html'">← Zur öffentlichen Übersicht</button>
+      <div class="box" style="margin-top:.75rem">
+        <h3 style="margin:0 0 .5rem 0">Eingegangene Vorschläge</h3>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>App</th>
+              <th class="muted">Store-URL</th>
+              <th class="muted">Hinweis</th>
+              <th class="muted">Datum</th>
+            </tr>
+          </thead>
+          <tbody id="suggTbody"></tbody>
+        </table>
+        <div id="suggEmpty" class="empty" style="display:none">Noch keine Vorschläge vorhanden.</div>
+        <div id="suggErr" class="error" style="display:none"></div>
       </div>
     </section>
 
-    <!-- === ADMIN: Bewertungen verwalten (nur für Admin) === -->
-    <section id="adminManage" class="admin-box hidden">
-      <div class="admin-head">
-        <div class="admin-title">Admin: Bewertungen verwalten</div>
-        <button id="reloadAdmin" class="btn">Neu laden</button>
+    <section id="latest" style="margin-top:1.25rem">
+      <h2>Letzte Bewertungen</h2>
+      <div class="toolbar">
+        <input id="search" type="search" placeholder="App suchen…">
+        <span id="count" class="muted"></span>
       </div>
-      <div style="padding:0 1rem 1rem">
-        <table class="table" id="admTable">
-          <thead>
-            <tr>
-              <th>App-Name</th>
-              <th class="hide-sm">Version</th>
-              <th class="hide-md">Kategorie</th>
-              <th>Prozent</th>
-              <th>Note</th>
-              <th class="muted">Datum</th>
-              <th>Aktionen</th>
-            </tr>
-          </thead>
-          <tbody id="admBody"></tbody>
-        </table>
-        <div id="admEmpty" class="note muted" style="display:none">Keine Einträge gefunden.</div>
-        <div id="admErr" class="note warn" style="display:none"></div>
-      </div>
+      <div id="cards" class="cards"></div>
+      <div id="latestEmpty" class="empty" style="display:none">Noch keine Bewertungen vorhanden.</div>
+      <div id="latestErr" class="error" style="display:none"></div>
+    </section>
+
+    <section id="apps">
+      <h2 style="margin-top:1.25rem">Apps (Katalog)</h2>
+      <table class="table" id="appsTable">
+        <thead>
+          <tr>
+            <th>App</th>
+            <th>Version</th>
+            <th>Kategorie</th>
+            <th class="muted">Bundle-ID</th>
+            <th class="muted">Erstellt</th>
+          </tr>
+        </thead>
+        <tbody id="appsTbody"></tbody>
+      </table>
+      <div id="appsEmpty" class="empty" style="display:none">Noch keine Apps im Katalog.</div>
+      <div id="appsErr" class="error" style="display:none"></div>
     </section>
   </div>
 
-  <!-- App-Logik (rendert Fragen & feuert eazy:result) -->
-  <script src="./js/app.js"></script>
-
-  <!-- Supabase + Login + Speichern + Admin-Konsole -->
   <script type="module">
     import { createClient } from "https://esm.sh/@supabase/supabase-js";
-
     const supabase = createClient(
       "https://lhdztkfvrnsqfnbqybfq.supabase.co",
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxoZHp0a2Z2cm5zcWZuYnF5YmZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTczMjIxMjMsImV4cCI6MjA3Mjg5ODEyM30.81BVX5zf_WxE3RdTw32OttwsiMgDanXdNIkWeug-jUs"
     );
 
-    const loginForm  = document.getElementById('loginForm');
-    const loginHint  = document.getElementById('loginHint');
-    const loginUser  = document.getElementById('loginUser');
-    const loginStatus= document.getElementById('loginStatus');
-    const btnLogout  = document.getElementById('btnLogout');
-    const auditForm  = document.getElementById('auditForm');
-    const adminNote  = document.getElementById('adminNote');
+    const cards = document.getElementById('cards');
+    const searchInput = document.getElementById('search');
+    const countEl = document.getElementById('count');
+    const latestEmpty = document.getElementById('latestEmpty');
+    const latestErr = document.getElementById('latestErr');
 
-    const adminManage = document.getElementById('adminManage');
-    const admBody     = document.getElementById('admBody');
-    const admEmpty    = document.getElementById('admEmpty');
-    const admErr      = document.getElementById('admErr');
-    const btnReload   = document.getElementById('reloadAdmin');
+    const appsTbody = document.getElementById('appsTbody');
+    const appsEmpty = document.getElementById('appsEmpty');
+    const appsErr = document.getElementById('appsErr');
 
-    function setLoggedInUI(isAdmin) {
-      loginForm.style.display = 'none';
-      loginStatus.style.display = 'flex';
-      loginUser.textContent = isAdmin ? "Superadmin" : "Eingeloggt";
-    }
-    function setLoggedOutUI() {
-      loginForm.style.display = 'block';
-      loginStatus.style.display = 'none';
-      loginUser.textContent = '';
-      auditForm.style.display = 'none';
-      adminManage.classList.add('hidden');
-      adminNote.classList.add('hidden');
-    }
+    // Vorschläge
+    const suggForm = document.getElementById('suggForm');
+    const suggName = document.getElementById('suggName');
+    const suggUrl  = document.getElementById('suggUrl');
+    const suggNote = document.getElementById('suggNote');
+    const suggMsg  = document.getElementById('suggMsg');
+    const suggTbody= document.getElementById('suggTbody');
+    const suggEmpty= document.getElementById('suggEmpty');
+    const suggErr  = document.getElementById('suggErr');
+    const hp       = document.getElementById('hp');
 
-    async function isAdmin() {
-      const { data: { session } } = await supabase.auth.getSession();
-      const uid = session?.user?.id;
-      if (!uid) return false;
-      const { data, error } = await supabase.from('admins').select('user_id').eq('user_id', uid).maybeSingle();
-      return !!data && !error;
-    }
-
-    async function guardAdminUI() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) { setLoggedOutUI(); return; }
-      const admin = await isAdmin();
-      setLoggedInUI(admin);
-      if (admin) {
-        auditForm.style.display = 'block';
-        adminManage.classList.remove('hidden');
-        adminNote.classList.add('hidden');
-        await loadAdminAssessments();
-      } else {
-        auditForm.style.display = 'none';
-        adminManage.classList.add('hidden');
-        adminNote.classList.remove('hidden');
-      }
-    }
-
-    // Login Submit
-    loginForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const email = document.getElementById('emailInput').value.trim();
-      const pw    = document.getElementById('pwInput').value.trim();
-      if (!email || !pw) return alert("Bitte E-Mail und Passwort eingeben");
-
-      const { error } = await supabase.auth.signInWithPassword({ email, password: pw });
-      if (error) { loginHint.textContent = error.message; return; }
-
-      await guardAdminUI();
-    });
-
-    // Logout
-    btnLogout.addEventListener('click', async () => {
-      await supabase.auth.signOut();
-      setLoggedOutUI();
-    });
-
-    // Status bei Laden
-    (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) setLoggedOutUI();
-      await guardAdminUI();
-    })();
-
-    // ====== SPEICHERN (reagiert auf eazy:result von app.js) ======
-    function slugify(s){return (s||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');}
-
-    async function getOrCreateApp({ bundleId, name, version, category }) {
-      // zuerst per bundle_id probieren, sonst per name+version
-      let sel = await supabase.from("apps").select("*").eq("bundle_id", bundleId).limit(1);
-      if (sel.error) throw sel.error;
-      if (sel.data?.length) return sel.data[0];
-
-      sel = await supabase.from("apps")
-        .select("*")
-        .eq("name", name)
-        .eq("version", version || null)
-        .limit(1);
-      if (sel.error) throw sel.error;
-      if (sel.data?.length) return sel.data[0];
-
-      const ins = await supabase
-        .from("apps")
-        .insert({ bundle_id: bundleId, name, version: (version||null), category })
-        .select()
-        .single();
-      if (ins.error) throw ins.error;
-      return ins.data;
-    }
-
-    async function saveAssessment({ appId, answers, totalScore, grade }) {
-      const ins = await supabase
-        .from("assessments")
-        .insert({ app_id: appId, answers, total_score: Math.round(totalScore||0), grade })
-        .select().single();
-      if (ins.error) throw ins.error;
-      return ins.data;
-    }
-
-    async function requireAdmin() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) { alert("Bitte zuerst einloggen."); return false; }
-      if (!(await isAdmin())) { alert("Nur Admins dürfen speichern."); return false; }
-      return true;
-    }
-
-    document.addEventListener('eazy:result', async (ev) => {
-      if (!(await requireAdmin())) return;
-
-      try {
-        const { answers, score, grade, meta } = ev.detail;
-        const appName  = (meta?.appName || '').trim() || 'Unbenannte App';
-        const version  = (meta?.version || '').trim() || null;
-        const category = (meta?.category || '').trim() || null;
-        const bundleId = slugify(version ? `${appName}-${version}` : appName);
-
-        const app = await getOrCreateApp({ bundleId, name: appName, version, category });
-        await saveAssessment({ appId: app.id, answers, totalScore: score, grade });
-        alert("Bewertung gespeichert.");
-        await loadAdminAssessments(); // Liste auffrischen
-      } catch (e) {
-        console.error('[EAZY] Speichern fehlgeschlagen', e);
-        alert('Fehler beim Speichern: ' + (e?.message || e));
-      }
-    });
-    // ====== /SPEICHERN ======
-
-    // ====== ADMIN-KONSOLE: Laden, Bearbeiten, Löschen ======
     const fmtDate = iso => new Date(iso).toLocaleString('de-DE', { dateStyle:'medium', timeStyle:'short' });
-    const gradeColor = g => ({A:'#16a34a',B:'#22c55e',C:'#84cc16',D:'#eab308',E:'#f59e0b',F:'#ef4444'}[g] || '#6b7280');
-    const esc = s => (s||'').replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+    const escape = s => (s||'').replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
 
-    btnReload.addEventListener('click', () => loadAdminAssessments());
+    // --- Vorschlag einreichen (Gäste erlaubt) ---
+    suggForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      suggMsg.textContent = '';
+      suggErr.style.display = 'none';
 
-    async function loadAdminAssessments(){
-      admErr.style.display = 'none';
-      admBody.innerHTML = '';
-      admEmpty.style.display = 'none';
+      // Honeypot: falls gefüllt → Bots ignorieren
+      if (hp.value) return;
 
-      // Hole letzte 100 Bewertungen inkl. App-Felder
+      const name = (suggName.value||'').trim();
+      const url  = (suggUrl.value||'').trim();
+      const note = (suggNote.value||'').trim();
+
+      if (!name) {
+        suggMsg.textContent = 'Bitte App-Name angeben.';
+        return;
+      }
+
+      const { error } = await supabase.from('app_suggestions').insert({
+        app_name: name,
+        store_url: url || null,
+        note: note || null
+      });
+      if (error) {
+        suggErr.textContent = 'Fehler beim Senden: ' + error.message;
+        suggErr.style.display = 'block';
+        return;
+      }
+
+      suggName.value=''; suggUrl.value=''; suggNote.value='';
+      suggMsg.textContent = 'Danke! Vorschlag wurde gespeichert.';
+      await loadSuggestions(); // Liste aktualisieren
+    });
+
+    async function loadSuggestions(){
+      suggErr.style.display = 'none';
+      suggTbody.innerHTML = '';
+      suggEmpty.style.display = 'none';
+
       const { data, error } = await supabase
-        .from('assessments')
-        .select('id, app_id, total_score, grade, created_at, apps (id, name, version, category)')
+        .from('app_suggestions')
+        .select('app_name, store_url, note, created_at')
         .order('created_at', { ascending:false })
         .limit(100);
-
       if (error) {
-        admErr.textContent = 'Fehler beim Laden: ' + error.message;
-        admErr.style.display = 'block';
+        suggErr.textContent = 'Fehler beim Laden der Vorschläge: ' + error.message;
+        suggErr.style.display = 'block';
         return;
       }
       if (!data || !data.length) {
-        admEmpty.style.display = 'block';
+        suggEmpty.style.display = 'block';
         return;
       }
-
-      data.forEach(row => {
+      data.forEach(s => {
         const tr = document.createElement('tr');
-        tr.dataset.id = row.id;
-        tr.dataset.appId = row.app_id;
-
-        const appName = row.apps?.name || '';
-        const version = row.apps?.version || '';
-        const cat     = row.apps?.category || '';
-        const pct     = Math.round(row.total_score ?? 0);
-        const grade   = row.grade || 'F';
-        const when    = fmtDate(row.created_at);
-
         tr.innerHTML = `
-          <td>
-            <span class="val-name">${esc(appName)||'–'}</span>
-            <input class="edit-name inline" value="${esc(appName)}" style="display:none">
-          </td>
-          <td class="hide-sm">
-            <span class="val-version">${esc(version)||'–'}</span>
-            <input class="edit-version inline" value="${esc(version)}" style="display:none">
-          </td>
-          <td class="hide-md">
-            <span class="val-cat">${esc(cat)||'–'}</span>
-            <input class="edit-cat inline" value="${esc(cat)}" style="display:none">
-          </td>
-          <td>
-            <span class="val-score">${pct}</span>%
-            <input class="edit-score inline" type="number" min="0" max="100" step="1" value="${pct}" style="display:none;width:90px">
-          </td>
-          <td>
-            <span class="val-grade" style="color:${gradeColor(grade)}">${grade}</span>
-            <select class="edit-grade inline" style="display:none">
-              ${['A','B','C','D','E','F'].map(g=>`<option value="${g}" ${g===grade?'selected':''}>${g}</option>`).join('')}
-            </select>
-          </td>
-          <td class="muted">${when}</td>
-          <td>
-            <button class="btn btn-edit">Bearbeiten</button>
-            <button class="btn btn-save" style="display:none">Speichern</button>
-            <button class="btn btn-cancel" style="display:none">Abbrechen</button>
-            <button class="btn btn-danger btn-del">Löschen</button>
-          </td>
+          <td>${escape(s.app_name)}</td>
+          <td class="muted">${s.store_url ? `<a href="${escape(s.store_url)}" target="_blank" rel="noopener">Link</a>` : '–'}</td>
+          <td class="muted">${escape(s.note)||'–'}</td>
+          <td class="muted">${fmtDate(s.created_at)}</td>
         `;
-        admBody.appendChild(tr);
-
-        // Refs
-        const btnEdit = tr.querySelector('.btn-edit');
-        const btnSave = tr.querySelector('.btn-save');
-        const btnCancel = tr.querySelector('.btn-cancel');
-        const btnDel  = tr.querySelector('.btn-del');
-
-        const sName = tr.querySelector('.val-name');
-        const sVer  = tr.querySelector('.val-version');
-        const sCat  = tr.querySelector('.val-cat');
-        const sScore= tr.querySelector('.val-score');
-        const sGrade= tr.querySelector('.val-grade');
-
-        const iName = tr.querySelector('.edit-name');
-        const iVer  = tr.querySelector('.edit-version');
-        const iCat  = tr.querySelector('.edit-cat');
-        const iScore= tr.querySelector('.edit-score');
-        const iGrade= tr.querySelector('.edit-grade');
-
-        function setEditMode(on){
-          tr.classList.toggle('row-edit', on);
-          // spans
-          [sName,sVer,sCat,sScore,sGrade].forEach(el => { if (el) el.style.display = on ? 'none' : ''; });
-          // inputs
-          [iName,iVer,iCat,iScore,iGrade].forEach(el => { if (el) el.style.display = on ? '' : 'none'; });
-          // buttons
-          btnEdit.style.display   = on ? 'none' : '';
-          btnSave.style.display   = on ? '' : 'none';
-          btnCancel.style.display = on ? '' : 'none';
-        }
-
-        btnEdit.addEventListener('click', (e) => {
-          e.preventDefault();
-          setEditMode(true);
-          iName && iName.focus();
-        });
-
-        btnCancel.addEventListener('click', (e) => {
-          e.preventDefault();
-          // reset fields
-          iName.value  = sName.textContent.trim() || '';
-          iVer.value   = sVer?.textContent.trim() || '';
-          iCat.value   = sCat?.textContent.trim() || '';
-          iScore.value = sScore.textContent.trim() || '0';
-          iGrade.value = sGrade.textContent.trim() || 'F';
-          setEditMode(false);
-        });
-
-        btnSave.addEventListener('click', async (e) => {
-          e.preventDefault();
-          const appId   = tr.dataset.appId;
-          const assessId= tr.dataset.id;
-
-          const newName  = (iName?.value || '').trim() || null;
-          const newVer   = (iVer?.value || '').trim() || null;
-          const newCat   = (iCat?.value || '').trim() || null;
-          const newScore = Math.max(0, Math.min(100, parseInt(iScore.value || '0', 10)));
-          const newGrade = iGrade.value;
-
-          // 1) App-Felder updaten
-          const updApp = await supabase
-            .from('apps')
-            .update({ name: newName, version: newVer, category: newCat })
-            .eq('id', appId)
-            .select()
-            .single();
-          if (updApp.error) {
-            alert('App-Update fehlgeschlagen: ' + updApp.error.message);
-            return;
-          }
-
-          // 2) Assessment-Felder updaten
-          const updAss = await supabase
-            .from('assessments')
-            .update({ total_score: newScore, grade: newGrade })
-            .eq('id', assessId)
-            .select()
-            .single();
-          if (updAss.error) {
-            alert('Bewertungs-Update fehlgeschlagen: ' + updAss.error.message);
-            return;
-          }
-
-          // UI aktualisieren
-          sName.textContent  = newName || '–';
-          if (sVer)  sVer.textContent   = newVer || '–';
-          if (sCat)  sCat.textContent   = newCat || '–';
-          sScore.textContent = String(newScore);
-          sGrade.textContent = newGrade;
-          sGrade.style.color = gradeColor(newGrade);
-          setEditMode(false);
-        });
-
-        btnDel.addEventListener('click', async (e) => {
-          e.preventDefault();
-          if (!confirm('Diese Bewertung wirklich löschen?')) return;
-          const del = await supabase.from('assessments').delete().eq('id', row.id);
-          if (del.error) {
-            alert('Löschen fehlgeschlagen: ' + del.error.message);
-            return;
-          }
-          tr.remove();
-          if (!admBody.children.length) admEmpty.style.display = 'block';
-        });
+        suggTbody.appendChild(tr);
       });
     }
-    // ====== /ADMIN-KONSOLE ======
+
+    // --- Bewertungen & App-Katalog laden (wie zuvor, leicht erweitert mit Version) ---
+    try {
+      const [{ data: apps, error: appsErrRes },
+             { data: assessments, error: assessErrRes }] = await Promise.all([
+        supabase.from('v_apps_public').select('*').order('name', { ascending:true }).limit(1000),
+        supabase.from('v_assessments_public').select('*').order('created_at', { ascending:false }).limit(500)
+      ]);
+      if (appsErrRes) throw appsErrRes;
+      if (assessErrRes) throw assessErrRes;
+
+      const appById = Object.create(null);
+      (apps||[]).forEach(a => { appById[a.id] = a; });
+
+      // Neueste Bewertung je App
+      const latestByApp = new Map();
+      (assessments||[]).forEach(a => { if (!latestByApp.has(a.app_id)) latestByApp.set(a.app_id, a); });
+      const latestPerApp = Array.from(latestByApp.values())
+        .sort((a,b)=> new Date(b.created_at)-new Date(a.created_at))
+        .slice(0, 100);
+
+      function gradeColor(g){ return ({A:'#16a34a',B:'#22c55e',C:'#84cc16',D:'#eab308',E:'#f59e0b',F:'#ef4444'}[g] || '#6b7280'); }
+
+      function renderCards(list){
+        cards.innerHTML = '';
+        if (!list.length) { latestEmpty.style.display = 'block'; countEl.textContent = '0 Einträge'; return; }
+        latestEmpty.style.display = 'none';
+        list.forEach(a => {
+          const app = appById[a.app_id] || {};
+          const name = escape(app.name)||'Unbekannte App';
+          const cat  = escape(app.category)||'–';
+          const score = a.total_score ?? 0;
+          const grade = a.grade || '–';
+          const when  = fmtDate(a.created_at);
+          const el = document.createElement('div');
+          el.className = 'card';
+          el.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.25rem">
+              <div style="font-weight:600">${name}${app.version ? ` <span class="muted">(${escape(app.version)})</span>`:''}</div>
+              <span class="tag">${cat}</span>
+            </div>
+            <div class="score" style="color:${gradeColor(grade)}">${Math.round(score)}%</div>
+            <div class="grade" style="color:${gradeColor(grade)}">Note ${grade}</div>
+            <div class="muted" style="margin-top:.25rem">${when}</div>
+          `;
+          cards.appendChild(el);
+        });
+        countEl.textContent = `${list.length} Einträge`;
+      }
+      renderCards(latestPerApp);
+
+      // Suche
+      searchInput.addEventListener('input', () => {
+        const q = searchInput.value.trim().toLowerCase();
+        if (!q) return renderCards(latestPerApp);
+        const filtered = latestPerApp.filter(a => {
+          const app = appById[a.app_id] || {};
+          return (app.name||'').toLowerCase().includes(q) ||
+                 (app.category||'').toLowerCase().includes(q) ||
+                 (app.version||'').toLowerCase().includes(q);
+        });
+        renderCards(filtered);
+      });
+
+      // Katalog
+      appsTbody.innerHTML = '';
+      if (!apps || !apps.length) {
+        appsEmpty.style.display = 'block';
+      } else {
+        appsEmpty.style.display = 'none';
+        apps.forEach(a => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${escape(a.name)}</td>
+            <td>${escape(a.version)||'–'}</td>
+            <td>${escape(a.category)||'–'}</td>
+            <td class="muted">${escape(a.bundle_id)||'–'}</td>
+            <td class="muted">${fmtDate(a.created_at)}</td>
+          `;
+          appsTbody.appendChild(tr);
+        });
+      }
+    } catch (err) {
+      console.error(err);
+      latestErr.textContent = 'Fehler beim Laden der Bewertungen: ' + (err?.message || err);
+      latestErr.style.display = 'block';
+      appsErr.textContent = 'Fehler beim Laden des App-Katalogs: ' + (err?.message || err);
+      appsErr.style.display = 'block';
+    }
+
+    // Vorschlagsliste initial laden
+    loadSuggestions();
   </script>
 </body>
 </html>
