@@ -10,33 +10,26 @@
     .wrap{max-width:1000px;margin:0 auto;padding:1rem}
     header{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap}
     .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-top:12px}
-    .card{border:1px solid #e5e7eb;border-radius:12px;padding:12px;background:#fff;position:relative}
+    .card{border:1px solid #e5e7eb;border-radius:12px;padding:12px;background:#fff}
     .muted{color:#6b7280}
     .tag{display:inline-block;padding:.1rem .5rem;border-radius:999px;border:1px solid #e5e7eb;font-size:.8rem}
     .score{font-size:1.6rem;font-weight:700}
     .grade{font-weight:700}
     .table{width:100%;border-collapse:collapse;margin-top:8px;background:#fff;border-radius:12px;overflow:hidden}
-    .table th,.table td{padding:.6rem;border-bottom:1px solid #eee;text-align:left;vertical-align:middle}
+    .table th,.table td{padding:.6rem;border-bottom:1px solid #eee;text-align:left}
     .table th{background:#f8fafc}
     .toolbar{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin:.5rem 0}
     input[type="search"]{padding:.5rem;border:1px solid #ccc;border-radius:8px;min-width:220px}
     .empty{padding:1rem;border:1px dashed #ddd;border-radius:12px;color:#6b7280;background:#fff}
     .error{padding:.75rem;border:1px solid #fca5a5;background:#fef2f2;color:#7f1d1d;border-radius:8px}
-    .admin-badges{display:flex;gap:.35rem;position:absolute;top:8px;right:8px}
-    .btn-ghost{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:.25rem .5rem;font-size:.8rem;cursor:pointer}
-    .btn-ghost:hover{background:#f8fafc}
-    .btn-danger{border-color:#fecaca;color:#991b1b}
-    .btn-danger:hover{background:#fef2f2}
-    .admin-only{display:none} /* wird per JS sichtbar gemacht */
   </style>
 </head>
 <body>
   <div class="wrap">
     <header>
       <h1>EAZY Score – Öffentliche Übersicht</h1>
-      <nav style="display:flex;gap:.5rem;align-items:center">
+      <nav>
         <a class="tag" href="./index.html">→ Admin / Login</a>
-        <span id="who" class="muted" style="display:none"></span>
       </nav>
     </header>
 
@@ -56,11 +49,10 @@
       <table class="table" id="appsTable">
         <thead>
           <tr>
-            <th style="width:36%">App</th>
-            <th style="width:18%">Kategorie</th>
-            <th class="muted" style="width:24%">Bundle-ID</th>
-            <th class="muted" style="width:12%">Erstellt</th>
-            <th class="admin-only" style="width:10%">Aktionen</th>
+            <th>App</th>
+            <th>Kategorie</th>
+            <th class="muted">Bundle-ID</th>
+            <th class="muted">Erstellt</th>
           </tr>
         </thead>
         <tbody id="appsTbody"></tbody>
@@ -78,7 +70,6 @@
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxoZHp0a2Z2cm5zcWZuYnF5YmZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTczMjIxMjMsImV4cCI6MjA3Mjg5ODEyM30.81BVX5zf_WxE3RdTw32OttwsiMgDanXdNIkWeug-jUs"
     );
 
-    const whoEl = document.getElementById('who');
     const cards = document.getElementById('cards');
     const searchInput = document.getElementById('search');
     const countEl = document.getElementById('count');
@@ -91,106 +82,83 @@
 
     const fmtDate = iso => new Date(iso).toLocaleString('de-DE', { dateStyle:'medium', timeStyle:'short' });
     const escape = s => (s||'').replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
-    const slugify = s => (s||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
+    const gradeColor = g => ({A:'#16a34a',B:'#22c55e',C:'#84cc16',D:'#eab308',E:'#f59e0b',F:'#ef4444'}[g] || '#6b7280');
 
-    let IS_ADMIN = false;
     let APPS = [];
-    let ASSESS = [];
+    let APP_BY_ID = Object.create(null);
     let SCORES = [];
-    const APP_BY_ID = Object.create(null);
+    let ASSESS = []; // nur Fallback
 
-    function gradeColor(g){
-      return {A:'#16a34a',B:'#22c55e',C:'#84cc16',D:'#eab308',E:'#f59e0b',F:'#ef4444'}[g] || '#6b7280';
+    function renderLatestFromScores() {
+      cards.innerHTML = '';
+      const merged = SCORES
+        .map(s => {
+          const app = APP_BY_ID[s.app_id] || {};
+          return {
+            app_id: s.app_id,
+            name: app.name || 'Unbekannte App',
+            category: app.category || '–',
+            score: s.last_score ?? 0,
+            grade: s.last_grade || '–',
+            when: s.last_rated_at || app.created_at
+          };
+        })
+        .sort((a,b)=> new Date(b.when) - new Date(a.when));
+
+      if (!merged.length) {
+        latestEmpty.style.display = 'block';
+        countEl.textContent = '0 Einträge';
+        return;
+      }
+      latestEmpty.style.display = 'none';
+
+      merged.forEach(x => {
+        const el = document.createElement('div');
+        el.className = 'card';
+        el.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.25rem">
+            <div style="font-weight:600">${escape(x.name)}</div>
+            <span class="tag">${escape(x.category)}</span>
+          </div>
+          <div class="score" style="color:${gradeColor(x.grade)}">${Math.round(x.score)}%</div>
+          <div class="grade" style="color:${gradeColor(x.grade)}">Note ${x.grade}</div>
+          <div class="muted" style="margin-top:.25rem">${fmtDate(x.when)}</div>
+        `;
+        cards.appendChild(el);
+      });
+      countEl.textContent = `${merged.length} Einträge`;
+
+      // Live-Suche (nach Name/Kategorie)
+      searchInput.oninput = () => {
+        const q = searchInput.value.trim().toLowerCase();
+        const filtered = merged.filter(x =>
+          x.name.toLowerCase().includes(q) || x.category.toLowerCase().includes(q)
+        );
+        cards.innerHTML = '';
+        (filtered.length ? filtered : []).forEach(x => {
+          const el = document.createElement('div');
+          el.className = 'card';
+          el.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.25rem">
+              <div style="font-weight:600">${escape(x.name)}</div>
+              <span class="tag">${escape(x.category)}</span>
+            </div>
+            <div class="score" style="color:${gradeColor(x.grade)}">${Math.round(x.score)}%</div>
+            <div class="grade" style="color:${gradeColor(x.grade)}">Note ${x.grade}</div>
+            <div class="muted" style="margin-top:.25rem">${fmtDate(x.when)}</div>
+          `;
+          cards.appendChild(el);
+        });
+        countEl.textContent = `${filtered.length} Einträge`;
+      };
     }
 
-    async function isAdmin(){
-      const { data: { session } } = await supabase.auth.getSession();
-      const uid = session?.user?.id;
-      if (!uid) return false;
-      const { data, error } = await supabase.from('admins').select('user_id').eq('user_id', uid).maybeSingle();
-      return !!data && !error;
-    }
+    function renderLatestFallbackFromAssessments(){
+      // Falls app_scores leer ist, nehmen wir v_assessments_public (neuste je App)
+      const latestByApp = new Map();
+      (ASSESS||[]).forEach(a => { if (!latestByApp.has(a.app_id)) latestByApp.set(a.app_id, a); });
+      const list = Array.from(latestByApp.values()).sort((a,b)=> new Date(b.created_at)-new Date(a.created_at));
 
-    function showAdminUI(){
-      IS_ADMIN = true;
-      whoEl.style.display = 'inline';
-      whoEl.textContent = 'Eingeloggt: Superadmin';
-      // zeige Admin-Aktionsspalten
-      document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'table-cell');
-    }
-
-    function hideAdminUI(){
-      IS_ADMIN = false;
-      whoEl.style.display = 'none';
-      document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
-    }
-
-    // ---------- CRUD: Bewertungen ----------
-    async function updateAssessment(a){
-      // einfache Edit-Prompts
-      const newScoreStr = prompt('Neuer Prozentwert (0–100):', String(a.total_score ?? 0));
-      if (newScoreStr == null) return;
-      const newScore = Math.min(100, Math.max(0, Math.round(Number(newScoreStr))));
-      const newGrade = prompt('Neue Note (A–F):', a.grade || 'F');
-      if (newGrade == null) return;
-      const grade = (newGrade||'').trim().toUpperCase();
-      if (!/^[A-F]$/.test(grade)) return alert('Ungültige Note. Erlaubt: A, B, C, D, E, F.');
-
-      const { error } = await supabase.from('assessments')
-        .update({ total_score: newScore, grade })
-        .eq('id', a.id);
-      if (error) return alert('Update fehlgeschlagen: ' + error.message);
-      await loadAll(); // neu rendern
-    }
-
-    async function deleteAssessment(a){
-      if (!confirm('Bewertung wirklich löschen?')) return;
-      const { error } = await supabase.from('assessments').delete().eq('id', a.id);
-      if (error) return alert('Löschen fehlgeschlagen: ' + error.message);
-      await loadAll();
-    }
-
-    // ---------- CRUD: Apps ----------
-    function parseNameVersionFromBundle(bundleId){
-      // unser Muster: <name-slug>-<version>
-      const m = String(bundleId||'').match(/^(.*)-([^-]+)$/);
-      if (!m) return { nameFromBundle: null, versionFromBundle: null };
-      return { nameFromBundle: m[1], versionFromBundle: m[2] };
-    }
-
-    async function editApp(app){
-      // Name/Kategorie direkt, Version via bundleId (ableiten)
-      const curVersion = parseNameVersionFromBundle(app.bundle_id).versionFromBundle || '';
-      const newName = prompt('App-Name:', app.name || '');
-      if (newName == null) return;
-      const newCat = prompt('Kategorie:', app.category || '');
-      if (newCat == null) return;
-      const newVersion = prompt('Version (nur für bundleId; optional):', curVersion);
-      if (newVersion == null) return;
-
-      // bundleId neu ableiten
-      const newBundle = slugify(`${newName || 'unbenannte-app'}-${newVersion || 'v1'}`);
-
-      // Update
-      const { error } = await supabase.from('apps').update({
-        name: newName || app.name,
-        category: newCat || null,
-        bundle_id: newBundle
-      }).eq('id', app.id);
-
-      if (error) return alert('App-Update fehlgeschlagen: ' + error.message);
-      await loadAll();
-    }
-
-    async function deleteApp(app){
-      if (!confirm(`App „${app.name}“ wirklich löschen? (alle Bewertungen werden mit gelöscht)`)) return;
-      const { error } = await supabase.from('apps').delete().eq('id', app.id);
-      if (error) return alert('App-Löschung fehlgeschlagen: ' + error.message);
-      await loadAll();
-    }
-
-    // ---------- Rendering ----------
-    function renderCards(list){
       cards.innerHTML = '';
       if (!list.length) {
         latestEmpty.style.display = 'block';
@@ -201,142 +169,89 @@
 
       list.forEach(a => {
         const app = APP_BY_ID[a.app_id] || {};
-        const name = escape(app.name)||'Unbekannte App';
-        const cat  = escape(app.category)||'–';
-        const score = a.total_score ?? 0;
-        const grade = a.grade || '–';
-        const when  = fmtDate(a.created_at);
         const el = document.createElement('div');
         el.className = 'card';
         el.innerHTML = `
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.25rem">
-            <div style="font-weight:600">${name}</div>
-            <span class="tag">${cat}</span>
+            <div style="font-weight:600">${escape(app.name || 'Unbekannte App')}</div>
+            <span class="tag">${escape(app.category || '–')}</span>
           </div>
-          <div class="score" style="color:${gradeColor(grade)}">${Math.round(score)}%</div>
-          <div class="grade" style="color:${gradeColor(grade)}">Note ${grade}</div>
-          <div class="muted" style="margin-top:.25rem">${when}</div>
-          <div class="admin-badges ${IS_ADMIN ? '' : 'admin-only'}">
-            <button class="btn-ghost" data-act="edit-assess" data-id="${a.id}">Bearbeiten</button>
-            <button class="btn-ghost btn-danger" data-act="del-assess" data-id="${a.id}">Löschen</button>
-          </div>
+          <div class="score" style="color:${gradeColor(a.grade)}">${Math.round(a.total_score ?? 0)}%</div>
+          <div class="grade" style="color:${gradeColor(a.grade)}">Note ${a.grade || '–'}</div>
+          <div class="muted" style="margin-top:.25rem">${fmtDate(a.created_at)}</div>
         `;
         cards.appendChild(el);
       });
       countEl.textContent = `${list.length} Einträge`;
 
-      // Admin-Events für Bewertungen
-      if (IS_ADMIN) {
-        cards.querySelectorAll('[data-act="edit-assess"]').forEach(btn=>{
-          btn.addEventListener('click', ()=>{
-            const id = btn.getAttribute('data-id');
-            const row = ASSESS.find(x=>x.id===id);
-            if (row) updateAssessment(row);
-          });
+      searchInput.oninput = () => {
+        const q = searchInput.value.trim().toLowerCase();
+        const filtered = list.filter(a => {
+          const app = APP_BY_ID[a.app_id] || {};
+          return (app.name||'').toLowerCase().includes(q) || (app.category||'').toLowerCase().includes(q);
         });
-        cards.querySelectorAll('[data-act="del-assess"]').forEach(btn=>{
-          btn.addEventListener('click', ()=>{
-            const id = btn.getAttribute('data-id');
-            const row = ASSESS.find(x=>x.id===id);
-            if (row) deleteAssessment(row);
-          });
+        cards.innerHTML = '';
+        filtered.forEach(a => {
+          const app = APP_BY_ID[a.app_id] || {};
+          const el = document.createElement('div');
+          el.className = 'card';
+          el.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.25rem">
+              <div style="font-weight:600">${escape(app.name || 'Unbekannte App')}</div>
+              <span class="tag">${escape(app.category || '–')}</span>
+            </div>
+            <div class="score" style="color:${gradeColor(a.grade)}">${Math.round(a.total_score ?? 0)}%</div>
+            <div class="grade" style="color:${gradeColor(a.grade)}">Note ${a.grade || '–'}</div>
+            <div class="muted" style="margin-top:.25rem">${fmtDate(a.created_at)}</div>
+          `;
+          cards.appendChild(el);
         });
-      }
+        countEl.textContent = `${filtered.length} Einträge`;
+      };
     }
 
     function renderAppsTable(){
       appsTbody.innerHTML = '';
-      const apps = [...APPS].sort((a,b)=> (a.name||'').localeCompare(b.name||''));
-      if (!apps.length) {
-        appsEmpty.style.display = 'block';
-        return;
-      }
+      const appsSorted = [...APPS].sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+      if (!appsSorted.length) { appsEmpty.style.display = 'block'; return; }
       appsEmpty.style.display = 'none';
 
-      apps.forEach(a => {
+      appsSorted.forEach(a => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${escape(a.name)}</td>
           <td>${escape(a.category)||'–'}</td>
           <td class="muted">${escape(a.bundle_id)||'–'}</td>
           <td class="muted">${fmtDate(a.created_at)}</td>
-          <td class="admin-only" style="white-space:nowrap">
-            <button class="btn-ghost" data-act="edit-app" data-id="${a.id}">Bearbeiten</button>
-            <button class="btn-ghost btn-danger" data-act="del-app" data-id="${a.id}">Löschen</button>
-          </td>
         `;
         appsTbody.appendChild(tr);
       });
-
-      // Admin-Events für Apps
-      if (IS_ADMIN) {
-        appsTbody.querySelectorAll('[data-act="edit-app"]').forEach(btn=>{
-          btn.addEventListener('click', ()=>{
-            const id = btn.getAttribute('data-id');
-            const app = APPS.find(x=>x.id===id);
-            if (app) editApp(app);
-          });
-        });
-        appsTbody.querySelectorAll('[data-act="del-app"]').forEach(btn=>{
-          btn.addEventListener('click', ()=>{
-            const id = btn.getAttribute('data-id');
-            const app = APPS.find(x=>x.id===id);
-            if (app) deleteApp(app);
-          });
-        });
-      }
     }
 
-    // ---------- Load ----------
-    async function loadAll(){
-      // Views sind öffentlich; Admin-Status getrennt ermittelt
-      const [appsRes, assessRes, scoresRes] = await Promise.all([
+    try {
+      // parallel laden
+      const [appsRes, scoresRes, assessRes] = await Promise.all([
         supabase.from('v_apps_public').select('*').order('name', { ascending:true }).limit(500),
-        supabase.from('v_assessments_public').select('*').order('created_at', { ascending:false }).limit(500),
-        supabase.from('app_scores').select('*').order('last_rated_at', { ascending:false }).limit(500)
+        supabase.from('app_scores').select('*').order('last_rated_at', { ascending:false }).limit(500),
+        supabase.from('v_assessments_public').select('*').order('created_at', { ascending:false }).limit(500)
       ]);
       if (appsRes.error) throw appsRes.error;
-      if (assessRes.error) throw assessRes.error;
       if (scoresRes.error) throw scoresRes.error;
+      if (assessRes.error) console.warn('Assessments View nicht verfügbar:', assessRes.error);
 
       APPS = appsRes.data || [];
-      ASSESS = assessRes.data || [];
-      SCORES = scoresRes.data || [];
-
-      // Index
-      for (const k in APP_BY_ID) delete APP_BY_ID[k];
+      APP_BY_ID = Object.create(null);
       APPS.forEach(a => APP_BY_ID[a.id] = a);
 
-      // Neueste Bewertung je App
-      const latestByApp = new Map();
-      (ASSESS||[]).forEach(a => { if (!latestByApp.has(a.app_id)) latestByApp.set(a.app_id, a); });
-      const latestPerApp = Array.from(latestByApp.values())
-        .sort((a,b)=> new Date(b.created_at)-new Date(a.created_at))
-        .slice(0, 100);
+      SCORES = scoresRes.data || [];
+      ASSESS = assessRes.data || [];
 
-      renderCards(latestPerApp);
+      // Karten aus app_scores, Fallback auf assessments wenn leer
+      if (SCORES.length > 0) renderLatestFromScores();
+      else renderLatestFallbackFromAssessments();
+
+      // Katalog
       renderAppsTable();
-    }
-
-    // ---------- Suche ----------
-    searchInput.addEventListener('input', () => {
-      const q = searchInput.value.trim().toLowerCase();
-      if (!q) return loadAll(); // rendert neu
-      const latestByApp = new Map();
-      (ASSESS||[]).forEach(a => { if (!latestByApp.has(a.app_id)) latestByApp.set(a.app_id, a); });
-      let latestPerApp = Array.from(latestByApp.values());
-      latestPerApp = latestPerApp.filter(a => {
-        const app = APP_BY_ID[a.app_id] || {};
-        return (app.name||'').toLowerCase().includes(q) ||
-               (app.category||'').toLowerCase().includes(q);
-      });
-      renderCards(latestPerApp);
-    });
-
-    // ---------- Init ----------
-    try {
-      if (await isAdmin()) showAdminUI(); else hideAdminUI();
-      await loadAll();
     } catch (err) {
       console.error(err);
       latestErr.textContent = 'Fehler beim Laden der Bewertungen: ' + (err?.message || err);
