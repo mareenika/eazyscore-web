@@ -6,25 +6,31 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link href="./css/style.css" rel="stylesheet">
   <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial}
     form .question{display:flex;gap:12px;align-items:center;margin:.5rem 0;flex-wrap:wrap}
     .inline-label{min-width:280px;font-weight:600}
     .inline-field select,.inline-field input{padding:.5rem;border:1px solid #ccc;border-radius:6px}
     fieldset{border:1px solid #e2e8f0;border-radius:8px;padding:1rem;margin:1rem 0}
     legend{font-weight:700}
     .hidden{display:none}
-    .footer{display:flex;justify-content:flex-start}
+    .footer{display:flex;gap:.5rem;justify-content:flex-start}
     .note{margin:.5rem 0;color:#555;font-size:.95em}
     .warn{color:#a33}
     .success{color:green}
+    .table{width:100%;border-collapse:collapse;margin-top:8px;background:#fff;border-radius:12px;overflow:hidden}
+    .table th,.table td{padding:.6rem;border-bottom:1px solid #eee;text-align:left}
+    .table th{background:#f8fafc}
+    .btn{padding:.35rem .6rem;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer}
+    .btn-danger{border-color:#ef4444;color:#ef4444}
+    .btn-primary{background:#111827;color:#fff;border-color:#111827}
+    .section{margin-top:1.25rem}
+    .muted{color:#6b7280}
   </style>
 </head>
 <body>
-  <div class="container">
+  <div class="container" style="max-width:1000px;margin:0 auto;padding:1rem">
     <h1>EAZY Score</h1>
-
-    <p class="note">
-      Öffentliche Liste ansehen: <a href="./public.html">Letzte Bewertungen</a>
-    </p>
+    <p class="note">Öffentliche Liste ansehen: <a href="./public.html">Letzte Bewertungen</a></p>
 
     <!-- LOGIN -->
     <form id="loginForm" style="margin:1rem 0; border:1px solid #ddd; padding:1rem; border-radius:8px;">
@@ -34,14 +40,14 @@
       <label for="pwInput">Passwort:
         <input id="pwInput" type="password" required>
       </label>
-      <button id="btnLogin" type="submit">Anmelden</button>
+      <button id="btnLogin" type="submit" class="btn btn-primary">Anmelden</button>
       <div id="loginHint" class="note"></div>
     </form>
 
     <!-- Status + Logout -->
     <div id="loginStatus" style="display:none; margin:1rem 0; font-weight:600; color:green; align-items:center;">
-      <span id="loginUser"></span>
-      <button id="btnLogout" type="button" style="margin-left:1rem;">Logout</button>
+      <span id="loginUser">Superadmin</span>
+      <button id="btnLogout" type="button" class="btn" style="margin-left:1rem;">Logout</button>
     </div>
 
     <!-- Hinweis für Nicht-Admins -->
@@ -74,13 +80,13 @@
       </fieldset>
 
       <div class="footer">
-        <button type="submit" class="btn-primary">Bewerten</button>
+        <button type="submit" class="btn btn-primary">Bewerten</button>
       </div>
     </form>
 
     <!-- Ergebnis -->
     <section id="resultSection" class="score-card hidden" aria-live="polite">
-      <div class="top-row">
+      <div class="top-row" style="display:flex;gap:12px">
         <div class="score-block">
           <div class="score-label">Gesamt-Score</div>
           <div id="scoreValue" class="score-value">0%</div>
@@ -93,14 +99,14 @@
       </div>
 
       <div class="progress-wrapper" aria-label="Score Fortschritt">
-        <div class="progress-container">
-          <div id="progressBar" class="progress-bar grade-F" style="width:0%;">
+        <div class="progress-container" style="background:#eee;border-radius:8px;overflow:hidden">
+          <div id="progressBar" class="progress-bar grade-F" style="width:0%;background:#ef4444;color:#fff;padding:.25rem .5rem;">
             <span id="progressText">0/0</span>
           </div>
         </div>
       </div>
 
-      <div class="meta-grid">
+      <div class="meta-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:.75rem">
         <div class="meta-col">
           <div class="section-title">App-Details</div>
           <div><span class="label-key">App-Name: </span><span id="rAppName">–</span></div>
@@ -114,16 +120,36 @@
       </div>
 
       <div class="footer">
-        <button id="restartBtn" class="btn-primary" type="button">Neu bewerten</button>
-        <button type="button" class="btn-secondary" style="margin-left:.5rem" onclick="location.href='./public.html'">← Zur öffentlichen Übersicht</button>
+        <button id="restartBtn" class="btn">Neu bewerten</button>
+        <button type="button" class="btn" onclick="location.href='./public.html'">← Öffentliche Übersicht</button>
       </div>
+    </section>
+
+    <!-- ADMIN VERWALTUNG -->
+    <section id="manage" class="section" style="display:none">
+      <h2>Verwalten (Apps & Bewertungen)</h2>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>App</th>
+            <th>Version</th>
+            <th>Kategorie</th>
+            <th class="muted">Score</th>
+            <th class="muted">Note</th>
+            <th class="muted">Zuletzt</th>
+            <th>Aktionen</th>
+          </tr>
+        </thead>
+        <tbody id="manageTbody"></tbody>
+      </table>
+      <div id="manageEmpty" class="note muted" style="display:none">Keine Einträge.</div>
     </section>
   </div>
 
   <!-- App-Logik -->
   <script src="./js/app.js"></script>
 
-  <!-- Supabase Login + Admin Check -->
+  <!-- Supabase + Admin-Funktionen -->
   <script type="module">
     import { createClient } from "https://esm.sh/@supabase/supabase-js";
 
@@ -132,132 +158,211 @@
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxoZHp0a2Z2cm5zcWZuYnF5YmZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTczMjIxMjMsImV4cCI6MjA3Mjg5ODEyM30.81BVX5zf_WxE3RdTw32OttwsiMgDanXdNIkWeug-jUs"
     );
 
-    const loginForm   = document.getElementById('loginForm');
-    const emailInput  = document.getElementById('emailInput');
-    const pwInput     = document.getElementById('pwInput');
-    const btnLogin    = document.getElementById('btnLogin');
-    const loginHint   = document.getElementById('loginHint');
+    const loginForm  = document.getElementById('loginForm');
+    const loginHint  = document.getElementById('loginHint');
+    const loginStatus= document.getElementById('loginStatus');
+    const btnLogout  = document.getElementById('btnLogout');
+    const auditForm  = document.getElementById('auditForm');
+    const adminNote  = document.getElementById('adminNote');
+    const manageSec  = document.getElementById('manage');
+    const manageTbody= document.getElementById('manageTbody');
+    const manageEmpty= document.getElementById('manageEmpty');
 
-    const loginStatus = document.getElementById('loginStatus');
-    const loginUser   = document.getElementById('loginUser');
-    const btnLogout   = document.getElementById('btnLogout');
-
-    const auditForm   = document.getElementById('auditForm');
-    const adminNote   = document.getElementById('adminNote');
-
-    function setLoggedInUI(label = "Superadmin") {
-      loginForm.style.display = 'none';
-      loginStatus.style.display = 'flex';
-      loginUser.textContent = `Eingeloggt: ${label}`;
-    }
-    function setLoggedOutUI() {
-      loginForm.style.display = 'block';
-      loginStatus.style.display = 'none';
-      loginUser.textContent = '';
-      auditForm.style.display = 'none';
-      adminNote.classList.add('hidden');
+    function setLoggedInUI(){ loginForm.style.display='none'; loginStatus.style.display='flex'; }
+    function setLoggedOutUI(){ loginForm.style.display='block'; loginStatus.style.display='none';
+      auditForm.style.display='none'; adminNote.classList.add('hidden'); manageSec.style.display='none';
     }
 
     async function isAdmin() {
-      const { data: { session }, error } = await supabase.auth.getSession();
-      if (error) { console.error('[isAdmin] getSession error', error); return false; }
+      const { data: { session } } = await supabase.auth.getSession();
       const uid = session?.user?.id;
       if (!uid) return false;
-      const { data, error: qErr } = await supabase
-        .from('admins')
-        .select('user_id')
-        .eq('user_id', uid)
-        .maybeSingle();
-      if (qErr) { console.error('[isAdmin] query error', qErr); return false; }
-      return !!data;
+      const { data, error } = await supabase.from('admins').select('user_id').eq('user_id', uid).maybeSingle();
+      return !!data && !error;
     }
 
     async function guardAdminUI() {
-      const ok = await isAdmin();
-      if (ok) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) { setLoggedOutUI(); return; }
+      if (await isAdmin()) {
         auditForm.style.display = 'block';
+        manageSec.style.display = 'block';
         adminNote.classList.add('hidden');
+        await loadManage();
       } else {
         auditForm.style.display = 'none';
+        manageSec.style.display = 'none';
         adminNote.classList.remove('hidden');
       }
     }
 
-    function showError(msg) {
-      loginHint.textContent = msg;
-      loginHint.style.color = '#b91c1c';
-    }
-    function clearError() {
-      loginHint.textContent = '';
-      loginHint.removeAttribute('style');
-    }
-
+    // Login
     loginForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      clearError();
-
-      const email = (emailInput.value || '').trim();
-      const pw    = (pwInput.value || '').trim();
-
-      if (!email || !pw) {
-        showError('Bitte E-Mail und Passwort eingeben.');
-        return;
-      }
-
-      btnLogin.disabled = true;
-      btnLogin.textContent = 'Anmelden…';
-      try {
-        console.log('[login] start', { email });
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password: pw });
-        if (error) {
-          console.error('[login] signIn error', error);
-          showError(error.message || 'Login fehlgeschlagen');
-          return;
-        }
-        console.log('[login] success', data?.user?.id);
-
-        const adminOk = await isAdmin();
-        if (!adminOk) {
-          setLoggedInUI('Eingeloggt');
-          auditForm.style.display = 'none';
-          adminNote.classList.remove('hidden');
-          return;
-        }
-
-        setLoggedInUI('Superadmin');
-        await guardAdminUI();
-      } catch (err) {
-        console.error('[login] unexpected', err);
-        showError('Unerwarteter Fehler beim Login.');
-      } finally {
-        btnLogin.disabled = false;
-        btnLogin.textContent = 'Anmelden';
-      }
+      const email = document.getElementById('emailInput').value.trim();
+      const pw    = document.getElementById('pwInput').value.trim();
+      if (!email || !pw) return alert("Bitte E-Mail und Passwort eingeben");
+      const { error } = await supabase.auth.signInWithPassword({ email, password: pw });
+      if (error) { loginHint.textContent = error.message; return; }
+      setLoggedInUI();
+      await guardAdminUI();
     });
 
+    // Logout
     btnLogout.addEventListener('click', async () => {
-      try {
-        await supabase.auth.signOut();
-      } catch (e) {
-        console.error('[logout] error', e);
-      } finally {
-        setLoggedOutUI();
+      await supabase.auth.signOut();
+      setLoggedOutUI();
+    });
+
+    // Initial
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) setLoggedInUI(); else setLoggedOutUI();
+      await guardAdminUI();
+    })();
+
+    // ========= Verwaltung =========
+    const fmtDate = iso => iso ? new Date(iso).toLocaleString('de-DE',{dateStyle:'medium',timeStyle:'short'}) : '–';
+    const escapeHtml = s => (s||'').replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+    function gradeColor(g){ return {A:'#16a34a',B:'#22c55e',C:'#84cc16',D:'#eab308',E:'#f59e0b',F:'#ef4444'}[g] || '#6b7280'; }
+
+    async function loadManage() {
+      manageTbody.innerHTML = '';
+      const { data: catalog, error } = await supabase
+        .from('v_app_catalog')
+        .select('*')
+        .order('last_rated_at',{ascending:false})
+        .limit(1000);
+      if (error) { manageEmpty.style.display='block'; return; }
+      if (!catalog?.length) { manageEmpty.style.display='block'; return; }
+      manageEmpty.style.display='none';
+
+      for (const row of catalog) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><strong>${escapeHtml(row.name||'')}</strong></td>
+          <td>${escapeHtml(row.version||'–')}</td>
+          <td>${escapeHtml(row.category||'–')}</td>
+          <td style="color:${gradeColor(row.last_grade||'F')}">${row.last_score!=null? Math.round(row.last_score)+'%':'–'}</td>
+          <td style="color:${gradeColor(row.last_grade||'F')}">${escapeHtml(row.last_grade||'–')}</td>
+          <td class="muted">${fmtDate(row.last_rated_at)}</td>
+          <td>
+            <button class="btn" data-act="edit-app" data-id="${row.id}">Bearbeiten</button>
+            <button class="btn btn-danger" data-act="delete-app" data-id="${row.id}">Löschen</button>
+            <button class="btn" data-act="assess" data-id="${row.id}">Bewertungen…</button>
+          </td>
+        `;
+        manageTbody.appendChild(tr);
+      }
+    }
+
+    // Delegation für Buttons
+    manageTbody.addEventListener('click', async (e) => {
+      const btn = e.target.closest('button[data-act]');
+      if (!btn) return;
+      const act = btn.dataset.act;
+      const appId = btn.dataset.id;
+
+      if (act === 'edit-app') {
+        await editApp(appId);
+        await loadManage();
+      }
+      if (act === 'delete-app') {
+        if (!confirm('Diese App samt Bewertungen wirklich löschen?')) return;
+        const del = await supabase.from('apps').delete().eq('id', appId);
+        if (del.error) return alert(del.error.message);
+        await loadManage();
+      }
+      if (act === 'assess') {
+        await manageAssessments(appId);
       }
     });
 
-    try {
-      const { data: { session }, error } = await supabase.auth.getSession();
-      if (error) console.warn('[init] getSession error', error);
-      if (session?.user) {
-        setLoggedInUI('Superadmin');
-        await guardAdminUI();
-      } else {
-        setLoggedOutUI();
-      }
-    } catch (e) {
-      console.error('[init] fatal', e);
-      setLoggedOutUI();
+    async function editApp(appId) {
+      const { data: appRow, error } = await supabase.from('apps').select('*').eq('id', appId).single();
+      if (error) return alert(error.message);
+      const name = prompt('App-Name:', appRow.name||'') ?? appRow.name;
+      const version = prompt('Version:', appRow.version||'') ?? appRow.version;
+      const category = prompt('Kategorie:', appRow.category||'') ?? appRow.category;
+      const upd = await supabase.from('apps').update({ name, version, category }).eq('id', appId).select().single();
+      if (upd.error) return alert(upd.error.message);
+      alert('App gespeichert.');
     }
+
+    async function manageAssessments(appId) {
+      // Liste Bewertungen:
+      const { data: rows, error } = await supabase
+        .from('assessments').select('id,total_score,grade,created_at').eq('app_id', appId).order('created_at',{ascending:false});
+      if (error) return alert(error.message);
+      if (!rows?.length) return alert('Keine Bewertungen vorhanden.');
+
+      // Einfache Auswahl
+      const menu = rows.map((r,i)=> `${i+1}) ${fmtDate(r.created_at)} – ${Math.round(r.total_score)}% (Note ${r.grade})`).join('\n');
+      const pick = prompt(`Bewertung wählen (Nummer):\n${menu}\n\nAktionen:\n- OK: gewählte Bewertung bearbeiten\n- Abbrechen: nichts tun`);
+      const idx = (pick? parseInt(pick,10):NaN)-1;
+      if (!(idx>=0 && idx<rows.length)) return;
+
+      const row = rows[idx];
+      // Bearbeiten
+      const newScore = prompt('Score in % (0-100):', Math.round(row.total_score)) ?? Math.round(row.total_score);
+      const newGrade = prompt('Note (A–F):', row.grade||'F') ?? row.grade;
+
+      if (newScore === null || newGrade === null) return;
+      if (!/^[A-F]$/.test(String(newGrade).toUpperCase())) return alert('Ungültige Note (A–F).');
+
+      const upd = await supabase.from('assessments')
+        .update({ total_score: Math.max(0, Math.min(100, Number(newScore))), grade: String(newGrade).toUpperCase() })
+        .eq('id', row.id);
+      if (upd.error) return alert(upd.error.message);
+
+      if (confirm('Diese Bewertung löschen? (Abbrechen = nicht löschen)')) {
+        const del = await supabase.from('assessments').delete().eq('id', row.id);
+        if (del.error) return alert(del.error.message);
+      }
+      alert('Fertig.');
+      await loadManage();
+    }
+
+    // ====== SPEICHERN (Reaktion auf eazy:result aus app.js) ======
+    function slugify(s){return (s||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');}
+    async function getOrCreateApp({ bundleId, name, category }) {
+      const sel = await supabase.from("apps").select("*").eq("bundle_id", bundleId).limit(1);
+      if (sel.error) throw sel.error;
+      if (sel.data?.length) return sel.data[0];
+      const ins = await supabase.from("apps").insert({ bundle_id: bundleId, name, category }).select().single();
+      if (ins.error) throw ins.error;
+      return ins.data;
+    }
+    async function saveAssessment({ appId, answers, totalScore, grade }) {
+      const ins = await supabase
+        .from("assessments")
+        .insert({ app_id: appId, answers, total_score: Math.round(totalScore||0), grade });
+      if (ins.error) throw ins.error;
+    }
+    document.addEventListener('eazy:result', async (ev) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) { alert("Bitte einloggen."); return; }
+      if (!(await isAdmin())) { alert("Nur Admin darf speichern."); return; }
+
+      try {
+        const { answers, score, grade, meta } = ev.detail;
+        const appName  = (meta?.appName || '').trim() || 'Unbenannte App';
+        const version  = (meta?.version || '').trim() || 'v1';
+        const category = (meta?.category || '').trim() || null;
+        const bundleId = slugify(`${appName}-${version}`);
+
+        const app = await getOrCreateApp({ bundleId, name: appName, category });
+        // Version bei Bedarf aktualisieren
+        if (app.version !== version) {
+          await supabase.from('apps').update({ version }).eq('id', app.id);
+        }
+        await saveAssessment({ appId: app.id, answers, totalScore: score, grade });
+        alert("Bewertung gespeichert.");
+        await loadManage();
+      } catch (e) {
+        alert('Fehler beim Speichern: ' + (e?.message || e));
+      }
+    });
   </script>
 </body>
 </html>
