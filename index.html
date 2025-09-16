@@ -16,6 +16,20 @@
     .note{margin:.5rem 0;color:#555;font-size:.95em}
     .warn{color:#a33}
     .success{color:green}
+
+    /* Admin-Konsole */
+    .admin-box{margin-top:1.25rem;border:1px solid #e5e7eb;border-radius:12px;background:#fff}
+    .admin-head{display:flex;justify-content:space-between;align-items:center;padding:.75rem 1rem;border-bottom:1px solid #e5e7eb}
+    .admin-title{font-weight:700}
+    .table{width:100%;border-collapse:collapse}
+    .table th,.table td{padding:.6rem;border-bottom:1px solid #eee;text-align:left;vertical-align:top}
+    .table th{background:#f8fafc}
+    .btn{padding:.35rem .6rem;border:1px solid #ddd;border-radius:8px;cursor:pointer;background:#fff}
+    .btn:hover{background:#f3f4f6}
+    .btn-danger{border-color:#ef4444;color:#b91c1c}
+    .row-edit{background:#fcfdfc}
+    .muted{color:#6b7280}
+    @media (max-width:700px){ .hide-sm{display:none} }
   </style>
 </head>
 <body>
@@ -77,9 +91,79 @@
         <button type="submit" class="btn-primary">Bewerten</button>
       </div>
     </form>
+
+    <!-- Ergebnis -->
+    <section id="resultSection" class="score-card hidden" aria-live="polite">
+      <div class="top-row">
+        <div class="score-block">
+          <div class="score-label">Gesamt-Score</div>
+          <div id="scoreValue" class="score-value">0%</div>
+          <div class="small-meta"><span id="correctMeta">0 von 0 richtigen Antworten</span></div>
+        </div>
+        <div class="grade-block">
+          <div class="grade-label">Note</div>
+          <div id="gradeBadge" class="grade-badge grade-F">F</div>
+        </div>
+      </div>
+
+      <div class="progress-wrapper" aria-label="Score Fortschritt">
+        <div class="progress-container">
+          <div id="progressBar" class="progress-bar grade-F" style="width:0%;">
+            <span id="progressText">0/0</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="meta-grid">
+        <div class="meta-col">
+          <div class="section-title">App-Details</div>
+          <div><span class="label-key">App-Name: </span><span id="rAppName">–</span></div>
+          <div><span class="label-key">Version: </span><span id="rVersion">–</span></div>
+          <div><span class="label-key">Kategorie: </span><span id="rCategory">–</span></div>
+        </div>
+        <div class="meta-col">
+          <div class="section-title">Kurzbefunde</div>
+          <div id="shortFindings"></div>
+        </div>
+      </div>
+
+      <div class="footer">
+        <button id="restartBtn" class="btn-primary" type="button">Neu bewerten</button>
+        <button type="button" class="btn-secondary" style="margin-left:.5rem" onclick="location.href='./public.html'">← Zur öffentlichen Übersicht</button>
+      </div>
+    </section>
+
+    <!-- === ADMIN: Bewertungen verwalten (nur für Admin) === -->
+    <section id="adminManage" class="admin-box hidden">
+      <div class="admin-head">
+        <div class="admin-title">Admin: Bewertungen verwalten</div>
+        <button id="reloadAdmin" class="btn">Neu laden</button>
+      </div>
+      <div style="padding:0 1rem 1rem">
+        <table class="table" id="admTable">
+          <thead>
+            <tr>
+              <th>App</th>
+              <th class="hide-sm">Version</th>
+              <th>Kategorie</th>
+              <th>Prozent</th>
+              <th>Note</th>
+              <th class="muted">Datum</th>
+              <th>Aktionen</th>
+            </tr>
+          </thead>
+          <tbody id="admBody"></tbody>
+        </table>
+        <div id="admEmpty" class="note muted" style="display:none">Keine Einträge gefunden.</div>
+        <div id="admErr" class="note warn" style="display:none"></div>
+      </div>
+    </section>
   </div>
 
-  <!-- Supabase Login -->
+  <!-- App-Logik (rendert Fragen & feuert eazy:result) -->
+  <script src="./js/app.js"></script>
+
+  <!-- Supabase + Login + Speichern + Admin-Konsole -->
   <script type="module">
     import { createClient } from "https://esm.sh/@supabase/supabase-js";
 
@@ -96,6 +180,12 @@
     const auditForm  = document.getElementById('auditForm');
     const adminNote  = document.getElementById('adminNote');
 
+    const adminManage = document.getElementById('adminManage');
+    const admBody     = document.getElementById('admBody');
+    const admEmpty    = document.getElementById('admEmpty');
+    const admErr      = document.getElementById('admErr');
+    const btnReload   = document.getElementById('reloadAdmin');
+
     function setLoggedInUI(isAdmin) {
       loginForm.style.display = 'none';
       loginStatus.style.display = 'flex';
@@ -106,6 +196,7 @@
       loginStatus.style.display = 'none';
       loginUser.textContent = '';
       auditForm.style.display = 'none';
+      adminManage.classList.add('hidden');
       adminNote.classList.add('hidden');
     }
 
@@ -120,13 +211,16 @@
     async function guardAdminUI() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) { setLoggedOutUI(); return; }
-      if (await isAdmin()) {
-        setLoggedInUI(true);
+      const admin = await isAdmin();
+      setLoggedInUI(admin);
+      if (admin) {
         auditForm.style.display = 'block';
+        adminManage.classList.remove('hidden');
         adminNote.classList.add('hidden');
+        await loadAdminAssessments();
       } else {
-        setLoggedInUI(false);
         auditForm.style.display = 'none';
+        adminManage.classList.add('hidden');
         adminNote.classList.remove('hidden');
       }
     }
@@ -152,8 +246,199 @@
 
     // Status bei Laden
     (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) setLoggedOutUI();
       await guardAdminUI();
     })();
+
+    // ====== SPEICHERN (reagiert auf eazy:result von app.js) ======
+    function slugify(s){return (s||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');}
+
+    async function getOrCreateApp({ bundleId, name, category }) {
+      const sel = await supabase.from("apps").select("*").eq("bundle_id", bundleId).limit(1);
+      if (sel.error) throw sel.error;
+      if (sel.data?.length) return sel.data[0];
+      const ins = await supabase.from("apps").insert({ bundle_id: bundleId, name, category }).select().single();
+      if (ins.error) throw ins.error;
+      return ins.data;
+    }
+
+    async function saveAssessment({ appId, answers, totalScore, grade }) {
+      const ins = await supabase
+        .from("assessments")
+        .insert({ app_id: appId, answers, total_score: Math.round(totalScore||0), grade })
+        .select().single();
+      if (ins.error) throw ins.error;
+      return ins.data;
+    }
+
+    async function requireAdmin() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) { alert("Bitte zuerst einloggen."); return false; }
+      if (!(await isAdmin())) { alert("Nur Admins dürfen speichern."); return false; }
+      return true;
+    }
+
+    document.addEventListener('eazy:result', async (ev) => {
+      if (!(await requireAdmin())) return;
+
+      try {
+        const { answers, score, grade, meta } = ev.detail;
+        const appName  = (meta?.appName || '').trim() || 'Unbenannte App';
+        const version  = (meta?.version || '').trim() || 'v1';
+        const category = (meta?.category || '').trim() || null;
+        const bundleId = slugify(`${appName}-${version}`);
+
+        const app = await getOrCreateApp({ bundleId, name: appName, category });
+        await saveAssessment({ appId: app.id, answers, totalScore: score, grade });
+        alert("Bewertung gespeichert.");
+        await loadAdminAssessments(); // Liste auffrischen
+      } catch (e) {
+        console.error('[EAZY] Speichern fehlgeschlagen', e);
+        alert('Fehler beim Speichern: ' + (e?.message || e));
+      }
+    });
+    // ====== /SPEICHERN ======
+
+    // ====== ADMIN-KONSOLE: Laden, Bearbeiten, Löschen ======
+    const fmtDate = iso => new Date(iso).toLocaleString('de-DE', { dateStyle:'medium', timeStyle:'short' });
+    const gradeColor = g => ({A:'#16a34a',B:'#22c55e',C:'#84cc16',D:'#eab308',E:'#f59e0b',F:'#ef4444'}[g] || '#6b7280');
+    const escapeHtml = s => (s||'').replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+
+    btnReload.addEventListener('click', () => loadAdminAssessments());
+
+    async function loadAdminAssessments(){
+      admErr.style.display = 'none';
+      admBody.innerHTML = '';
+      admEmpty.style.display = 'none';
+
+      // Hole letzte 100 Bewertungen inkl. App
+      const { data, error } = await supabase
+        .from('assessments')
+        .select('id, app_id, total_score, grade, created_at, apps (name, version, category)')
+        .order('created_at', { ascending:false })
+        .limit(100);
+
+      if (error) {
+        admErr.textContent = 'Fehler beim Laden: ' + error.message;
+        admErr.style.display = 'block';
+        return;
+      }
+      if (!data || !data.length) {
+        admEmpty.style.display = 'block';
+        return;
+      }
+
+      data.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.dataset.id = row.id;
+
+        const appName = escapeHtml(row.apps?.name || '–');
+        const version = escapeHtml(row.apps?.version || '–');
+        const cat     = escapeHtml(row.apps?.category || '–');
+        const pct     = Math.round(row.total_score ?? 0);
+        const grade   = row.grade || '–';
+        const when    = fmtDate(row.created_at);
+
+        tr.innerHTML = `
+          <td>${appName}</td>
+          <td class="hide-sm">${version}</td>
+          <td>${cat}</td>
+          <td>
+            <span class="val-score">${pct}</span>%
+            <input class="edit-score" type="number" min="0" max="100" step="1" value="${pct}" style="width:80px;display:none">
+          </td>
+          <td>
+            <span class="val-grade" style="color:${gradeColor(grade)}">${grade}</span>
+            <select class="edit-grade" style="display:none">
+              ${['A','B','C','D','E','F'].map(g=>`<option value="${g}" ${g===grade?'selected':''}>${g}</option>`).join('')}
+            </select>
+          </td>
+          <td class="muted">${when}</td>
+          <td>
+            <button class="btn btn-edit">Bearbeiten</button>
+            <button class="btn btn-save" style="display:none">Speichern</button>
+            <button class="btn btn-cancel" style="display:none">Abbrechen</button>
+            <button class="btn btn-danger btn-del">Löschen</button>
+          </td>
+        `;
+        admBody.appendChild(tr);
+
+        // Handlers
+        const btnEdit = tr.querySelector('.btn-edit');
+        const btnSave = tr.querySelector('.btn-save');
+        const btnCancel = tr.querySelector('.btn-cancel');
+        const btnDel  = tr.querySelector('.btn-del');
+
+        const spanScore = tr.querySelector('.val-score');
+        const spanGrade = tr.querySelector('.val-grade');
+        const inpScore  = tr.querySelector('.edit-score');
+        const selGrade  = tr.querySelector('.edit-grade');
+
+        function setEditMode(on){
+          tr.classList.toggle('row-edit', on);
+          spanScore.style.display = on ? 'none' : '';
+          spanGrade.style.display = on ? 'none' : '';
+          inpScore.style.display  = on ? '' : 'none';
+          selGrade.style.display  = on ? '' : 'none';
+          btnEdit.style.display   = on ? 'none' : '';
+          btnSave.style.display   = on ? '' : 'none';
+          btnCancel.style.display = on ? '' : 'none';
+        }
+
+        btnEdit.addEventListener('click', (e) => {
+          e.preventDefault();
+          setEditMode(true);
+          inpScore.focus();
+        });
+
+        btnCancel.addEventListener('click', (e) => {
+          e.preventDefault();
+          // reset fields
+          inpScore.value = spanScore.textContent.trim();
+          selGrade.value = spanGrade.textContent.trim();
+          setEditMode(false);
+        });
+
+        btnSave.addEventListener('click', async (e) => {
+          e.preventDefault();
+          const newScore = Math.max(0, Math.min(100, parseInt(inpScore.value || '0', 10)));
+          const newGrade = selGrade.value;
+
+          // Update in DB
+          const upd = await supabase
+            .from('assessments')
+            .update({ total_score: newScore, grade: newGrade })
+            .eq('id', row.id)
+            .select()
+            .single();
+
+          if (upd.error) {
+            alert('Update fehlgeschlagen: ' + upd.error.message);
+            return;
+          }
+
+          // UI aktualisieren
+          spanScore.textContent = String(newScore);
+          spanGrade.textContent = newGrade;
+          spanGrade.style.color = gradeColor(newGrade);
+          setEditMode(false);
+        });
+
+        btnDel.addEventListener('click', async (e) => {
+          e.preventDefault();
+          if (!confirm('Diese Bewertung wirklich löschen?')) return;
+          const del = await supabase.from('assessments').delete().eq('id', row.id);
+          if (del.error) {
+            alert('Löschen fehlgeschlagen: ' + del.error.message);
+            return;
+          }
+          tr.remove();
+          if (!admBody.children.length) admEmpty.style.display = 'block';
+        });
+      });
+    }
+    // ====== /ADMIN-KONSOLE ======
   </script>
 </body>
 </html>
