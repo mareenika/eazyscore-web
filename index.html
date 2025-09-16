@@ -77,53 +77,9 @@
         <button type="submit" class="btn-primary">Bewerten</button>
       </div>
     </form>
-
-    <!-- Ergebnis -->
-    <section id="resultSection" class="score-card hidden" aria-live="polite">
-      <div class="top-row">
-        <div class="score-block">
-          <div class="score-label">Gesamt-Score</div>
-          <div id="scoreValue" class="score-value">0%</div>
-          <div class="small-meta"><span id="correctMeta">0 von 0 richtigen Antworten</span></div>
-        </div>
-        <div class="grade-block">
-          <div class="grade-label">Note</div>
-          <div id="gradeBadge" class="grade-badge grade-F">F</div>
-        </div>
-      </div>
-
-      <div class="progress-wrapper" aria-label="Score Fortschritt">
-        <div class="progress-container">
-          <div id="progressBar" class="progress-bar grade-F" style="width:0%;">
-            <span id="progressText">0/0</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="meta-grid">
-        <div class="meta-col">
-          <div class="section-title">App-Details</div>
-          <div><span class="label-key">App-Name: </span><span id="rAppName">–</span></div>
-          <div><span class="label-key">Version: </span><span id="rVersion">–</span></div>
-          <div><span class="label-key">Kategorie: </span><span id="rCategory">–</span></div>
-        </div>
-        <div class="meta-col">
-          <div class="section-title">Kurzbefunde</div>
-          <div id="shortFindings"></div>
-        </div>
-      </div>
-
-      <div class="footer">
-        <button id="restartBtn" class="btn-primary" type="button">Neu bewerten</button>
-        <button type="button" class="btn-secondary" style="margin-left:.5rem" onclick="location.href='./public.html'">← Zur öffentlichen Übersicht</button>
-      </div>
-    </section>
   </div>
 
-  <!-- App-Logik (rendert Fragen & feuert eazy:result) -->
-  <script src="./js/app.js"></script>
-
-  <!-- Supabase + Login + Speichern -->
+  <!-- Supabase Login -->
   <script type="module">
     import { createClient } from "https://esm.sh/@supabase/supabase-js";
 
@@ -140,10 +96,10 @@
     const auditForm  = document.getElementById('auditForm');
     const adminNote  = document.getElementById('adminNote');
 
-    function setLoggedInUI(email) {
+    function setLoggedInUI(isAdmin) {
       loginForm.style.display = 'none';
       loginStatus.style.display = 'flex';
-      loginUser.textContent = `Eingeloggt: ${email}`;
+      loginUser.textContent = isAdmin ? "Superadmin" : "Eingeloggt";
     }
     function setLoggedOutUI() {
       loginForm.style.display = 'block';
@@ -165,9 +121,11 @@
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) { setLoggedOutUI(); return; }
       if (await isAdmin()) {
+        setLoggedInUI(true);
         auditForm.style.display = 'block';
         adminNote.classList.add('hidden');
       } else {
+        setLoggedInUI(false);
         auditForm.style.display = 'none';
         adminNote.classList.remove('hidden');
       }
@@ -183,7 +141,6 @@
       const { error } = await supabase.auth.signInWithPassword({ email, password: pw });
       if (error) { loginHint.textContent = error.message; return; }
 
-      setLoggedInUI(email);
       await guardAdminUI();
     });
 
@@ -195,85 +152,8 @@
 
     // Status bei Laden
     (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user?.email) {
-        setLoggedInUI(session.user.email);
-      } else {
-        setLoggedOutUI();
-      }
       await guardAdminUI();
     })();
-
-    // ====== SPEICHERN – reagiert auf eazy:result von app.js ======
-    function slugify(s){return (s||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');}
-
-    // << geändert: version wird berücksichtigt >>
-    async function getOrCreateApp({ bundleId, name, category, version }) {
-      // existiert?
-      const sel = await supabase.from("apps").select("*").eq("bundle_id", bundleId).limit(1);
-      if (sel.error) throw sel.error;
-      if (sel.data?.length) {
-        const app = sel.data[0];
-        // Version/Name/Kategorie aktualisieren (idempotent)
-        const upd = await supabase.from("apps")
-          .update({ version, name, category })
-          .eq("id", app.id);
-        if (upd.error) throw upd.error;
-        return app;
-      }
-      // neu anlegen
-      const ins = await supabase
-        .from("apps")
-        .insert({ bundle_id: bundleId, name, category, version })
-        .select()
-        .single();
-      if (ins.error) throw ins.error;
-      return ins.data;
-    }
-
-    async function saveAssessment({ appId, answers, totalScore, grade }) {
-      const ins = await supabase
-        .from("assessments")
-        .insert({ app_id: appId, answers, total_score: Math.round(totalScore||0), grade })
-        .select().single();
-      if (ins.error) throw ins.error;
-      return ins.data;
-    }
-
-    async function requireAdmin() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) { alert("Bitte zuerst einloggen."); return false; }
-      if (!(await isAdmin())) { alert("Du bist eingeloggt, aber kein Admin – Speichern blockiert."); return false; }
-      return true;
-    }
-
-    document.addEventListener('eazy:result', async (ev) => {
-      if (!(await requireAdmin())) return;
-
-      try {
-        const { answers, score, grade, meta } = ev.detail;
-        const appName  = (meta?.appName || '').trim() || 'Unbenannte App';
-        const version  = (meta?.version || '').trim() || 'v1';
-        const category = (meta?.category || '').trim() || null;
-        const bundleId = slugify(`${appName}-${version}`);
-
-        console.log('[EAZY] Speichern…', { appName, version, category, bundleId, score, grade });
-
-        // << geändert: version wird übergeben >>
-        const app = await getOrCreateApp({ bundleId, name: appName, category, version });
-        console.log('[EAZY] App ok', app);
-
-        const row = await saveAssessment({ appId: app.id, answers, totalScore: score, grade });
-        console.log('[EAZY] Assessment ok', row);
-
-        alert("Bewertung gespeichert. Öffne öffentliche Übersicht…");
-        setTimeout(() => location.href = './public.html?t=' + Date.now(), 600);
-      } catch (e) {
-        console.error('[EAZY] Speichern fehlgeschlagen', e);
-        alert('Fehler beim Speichern: ' + (e?.message || e));
-      }
-    });
-    // ====== /SPEICHERN ======
   </script>
 </body>
 </html>
