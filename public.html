@@ -82,65 +82,42 @@
     const appsEmpty = document.getElementById('appsEmpty');
     const appsErr = document.getElementById('appsErr');
 
-    // Helpers
     const fmtDate = iso => iso ? new Date(iso).toLocaleString('de-DE', { dateStyle:'medium', timeStyle:'short' }) : '–';
     const escape = s => (s||'').replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
     const gradeColor = g => ({A:'#16a34a',B:'#22c55e',C:'#84cc16',D:'#eab308',E:'#f59e0b',F:'#ef4444'}[g] || '#6b7280');
 
-    // Primär aus v_app_catalog lesen (empfohlen). Fallback: aus apps + app_scores zusammenbauen.
-    async function loadCatalogPreferView(){
-      const res = await supabase
+    async function loadCatalog(){
+      const { data, error } = await supabase
         .from('v_app_catalog')
         .select('*')
-        .order('last_rated_at', { ascending:false })
         .limit(500);
-      if (res.error) throw res.error;
-      return res.data || [];
+      if (error) throw error;
+      return data || [];
     }
 
-    async function loadCatalogFallback(){
-      const [appsRes, scoresRes] = await Promise.all([
-        supabase.from('apps').select('id,name,version,category,created_at').order('created_at',{ascending:false}).limit(500),
-        supabase.from('app_scores').select('*').order('last_rated_at',{ascending:false}).limit(500)
-      ]);
-      if (appsRes.error) throw appsRes.error;
-      if (scoresRes.error) throw scoresRes.error;
-
-      const scoresById = new Map();
-      (scoresRes.data||[]).forEach(s => scoresById.set(s.app_id, s));
-      return (appsRes.data||[]).map(a => {
-        const sc = scoresById.get(a.id) || {};
-        return {
-          id: a.id,
-          name: a.name,
-          version: a.version,
-          category: a.category,
-          last_score: sc.last_score ?? null,
-          last_grade: sc.last_grade ?? null,
-          last_rated_at: sc.last_rated_at ?? null
-        };
-      }).sort((x,y)=> new Date(y.last_rated_at||0)-new Date(x.last_rated_at||0));
-    }
-
-    function renderCardsFromCatalog(rows){
-      // Zeige die letzten Bewertungen (Top 100) als Karten
+    function renderCards(rows){
       cards.innerHTML = '';
-      const list = rows.slice(0,100);
-      if (!list.length) {
+      if (!rows.length) {
         latestEmpty.style.display = 'block';
         countEl.textContent = '0 Einträge';
         return;
       }
       latestEmpty.style.display = 'none';
-      countEl.textContent = `${list.length} Einträge`;
+      countEl.textContent = `${rows.length} Einträge`;
 
-      list.forEach(row => {
-        const name = escape(row.name) || 'Unbekannte App';
-        const version = escape(row.version) || '–';
-        const cat = escape(row.category) || '–';
-        const pct = (row.last_score ?? null) === null ? '–' : `${Math.round(row.last_score)}%`;
-        const grade = row.last_grade || '–';
-        const when = fmtDate(row.last_rated_at);
+      // Zeige die 100 neuesten Bewertungen (nach last_rated_at sortiert)
+      const list = rows
+        .slice()
+        .sort((a,b)=> new Date(b.last_rated_at||0) - new Date(a.last_rated_at||0))
+        .slice(0,100);
+
+      list.forEach(r => {
+        const name = escape(r.name) || 'Unbekannte App';
+        const version = escape(r.version) || '–';
+        const cat = escape(r.category) || '–';
+        const pct = r.last_score == null ? '–' : `${Math.round(r.last_score)}%`;
+        const grade = r.last_grade || '–';
+        const when = fmtDate(r.last_rated_at);
         const el = document.createElement('div');
         el.className = 'card';
         el.innerHTML = `
@@ -164,9 +141,12 @@
       }
       appsEmpty.style.display = 'none';
 
-      rows.forEach(r => {
+      // Alphabetisch sortieren (nach App-Name)
+      const sorted = rows.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+
+      sorted.forEach(r => {
         const tr = document.createElement('tr');
-        const pct = (r.last_score ?? null) === null ? '–' : `${Math.round(r.last_score)}%`;
+        const pct = r.last_score == null ? '–' : `${Math.round(r.last_score)}%`;
         tr.innerHTML = `
           <td>${escape(r.name)||'–'}</td>
           <td>${escape(r.version)||'–'}</td>
@@ -180,34 +160,20 @@
     }
 
     try {
-      // Erst versuchen wir die saubere View
-      let catalog = [];
-      try {
-        catalog = await loadCatalogPreferView();
-      } catch (e) {
-        // Falls View fehlt, Fallback verwenden
-        console.warn('v_app_catalog nicht verfügbar. Nutze Fallback.', e?.message || e);
-        catalog = await loadCatalogFallback();
-      }
-
-      // Render
-      renderCardsFromCatalog(catalog);
+      const catalog = await loadCatalog();
+      renderCards(catalog);
+      renderAppsTable(catalog);
 
       // Suche über Karten (Name/Kategorie/Version)
-      const allRows = catalog.slice(0,100);
       searchInput.addEventListener('input', () => {
         const q = searchInput.value.trim().toLowerCase();
-        if (!q) return renderCardsFromCatalog(catalog);
         const filtered = catalog.filter(r =>
           (r.name||'').toLowerCase().includes(q) ||
           (r.category||'').toLowerCase().includes(q) ||
           (r.version||'').toLowerCase().includes(q)
         );
-        renderCardsFromCatalog(filtered);
+        renderCards(filtered);
       });
-
-      // Tabelle rendern
-      renderAppsTable(catalog);
     } catch (err) {
       console.error(err);
       latestErr.textContent = 'Fehler beim Laden: ' + (err?.message || err);
