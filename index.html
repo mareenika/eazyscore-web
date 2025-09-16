@@ -29,6 +29,8 @@
     .btn-danger{border-color:#ef4444;color:#b91c1c}
     .row-edit{background:#fcfdfc}
     .muted{color:#6b7280}
+    input.inline{width:160px;max-width:100%}
+    @media (max-width:900px){ .hide-md{display:none} }
     @media (max-width:700px){ .hide-sm{display:none} }
   </style>
 </head>
@@ -143,9 +145,9 @@
         <table class="table" id="admTable">
           <thead>
             <tr>
-              <th>App</th>
+              <th>App-Name</th>
               <th class="hide-sm">Version</th>
-              <th>Kategorie</th>
+              <th class="hide-md">Kategorie</th>
               <th>Prozent</th>
               <th>Note</th>
               <th class="muted">Datum</th>
@@ -254,11 +256,25 @@
     // ====== SPEICHERN (reagiert auf eazy:result von app.js) ======
     function slugify(s){return (s||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');}
 
-    async function getOrCreateApp({ bundleId, name, category }) {
-      const sel = await supabase.from("apps").select("*").eq("bundle_id", bundleId).limit(1);
+    async function getOrCreateApp({ bundleId, name, version, category }) {
+      // zuerst per bundle_id probieren, sonst per name+version
+      let sel = await supabase.from("apps").select("*").eq("bundle_id", bundleId).limit(1);
       if (sel.error) throw sel.error;
       if (sel.data?.length) return sel.data[0];
-      const ins = await supabase.from("apps").insert({ bundle_id: bundleId, name, category }).select().single();
+
+      sel = await supabase.from("apps")
+        .select("*")
+        .eq("name", name)
+        .eq("version", version || null)
+        .limit(1);
+      if (sel.error) throw sel.error;
+      if (sel.data?.length) return sel.data[0];
+
+      const ins = await supabase
+        .from("apps")
+        .insert({ bundle_id: bundleId, name, version: (version||null), category })
+        .select()
+        .single();
       if (ins.error) throw ins.error;
       return ins.data;
     }
@@ -285,11 +301,11 @@
       try {
         const { answers, score, grade, meta } = ev.detail;
         const appName  = (meta?.appName || '').trim() || 'Unbenannte App';
-        const version  = (meta?.version || '').trim() || 'v1';
+        const version  = (meta?.version || '').trim() || null;
         const category = (meta?.category || '').trim() || null;
-        const bundleId = slugify(`${appName}-${version}`);
+        const bundleId = slugify(version ? `${appName}-${version}` : appName);
 
-        const app = await getOrCreateApp({ bundleId, name: appName, category });
+        const app = await getOrCreateApp({ bundleId, name: appName, version, category });
         await saveAssessment({ appId: app.id, answers, totalScore: score, grade });
         alert("Bewertung gespeichert.");
         await loadAdminAssessments(); // Liste auffrischen
@@ -303,7 +319,7 @@
     // ====== ADMIN-KONSOLE: Laden, Bearbeiten, Löschen ======
     const fmtDate = iso => new Date(iso).toLocaleString('de-DE', { dateStyle:'medium', timeStyle:'short' });
     const gradeColor = g => ({A:'#16a34a',B:'#22c55e',C:'#84cc16',D:'#eab308',E:'#f59e0b',F:'#ef4444'}[g] || '#6b7280');
-    const escapeHtml = s => (s||'').replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+    const esc = s => (s||'').replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
 
     btnReload.addEventListener('click', () => loadAdminAssessments());
 
@@ -312,10 +328,10 @@
       admBody.innerHTML = '';
       admEmpty.style.display = 'none';
 
-      // Hole letzte 100 Bewertungen inkl. App
+      // Hole letzte 100 Bewertungen inkl. App-Felder
       const { data, error } = await supabase
         .from('assessments')
-        .select('id, app_id, total_score, grade, created_at, apps (name, version, category)')
+        .select('id, app_id, total_score, grade, created_at, apps (id, name, version, category)')
         .order('created_at', { ascending:false })
         .limit(100);
 
@@ -332,25 +348,35 @@
       data.forEach(row => {
         const tr = document.createElement('tr');
         tr.dataset.id = row.id;
+        tr.dataset.appId = row.app_id;
 
-        const appName = escapeHtml(row.apps?.name || '–');
-        const version = escapeHtml(row.apps?.version || '–');
-        const cat     = escapeHtml(row.apps?.category || '–');
+        const appName = row.apps?.name || '';
+        const version = row.apps?.version || '';
+        const cat     = row.apps?.category || '';
         const pct     = Math.round(row.total_score ?? 0);
-        const grade   = row.grade || '–';
+        const grade   = row.grade || 'F';
         const when    = fmtDate(row.created_at);
 
         tr.innerHTML = `
-          <td>${appName}</td>
-          <td class="hide-sm">${version}</td>
-          <td>${cat}</td>
+          <td>
+            <span class="val-name">${esc(appName)||'–'}</span>
+            <input class="edit-name inline" value="${esc(appName)}" style="display:none">
+          </td>
+          <td class="hide-sm">
+            <span class="val-version">${esc(version)||'–'}</span>
+            <input class="edit-version inline" value="${esc(version)}" style="display:none">
+          </td>
+          <td class="hide-md">
+            <span class="val-cat">${esc(cat)||'–'}</span>
+            <input class="edit-cat inline" value="${esc(cat)}" style="display:none">
+          </td>
           <td>
             <span class="val-score">${pct}</span>%
-            <input class="edit-score" type="number" min="0" max="100" step="1" value="${pct}" style="width:80px;display:none">
+            <input class="edit-score inline" type="number" min="0" max="100" step="1" value="${pct}" style="display:none;width:90px">
           </td>
           <td>
             <span class="val-grade" style="color:${gradeColor(grade)}">${grade}</span>
-            <select class="edit-grade" style="display:none">
+            <select class="edit-grade inline" style="display:none">
               ${['A','B','C','D','E','F'].map(g=>`<option value="${g}" ${g===grade?'selected':''}>${g}</option>`).join('')}
             </select>
           </td>
@@ -364,23 +390,31 @@
         `;
         admBody.appendChild(tr);
 
-        // Handlers
+        // Refs
         const btnEdit = tr.querySelector('.btn-edit');
         const btnSave = tr.querySelector('.btn-save');
         const btnCancel = tr.querySelector('.btn-cancel');
         const btnDel  = tr.querySelector('.btn-del');
 
-        const spanScore = tr.querySelector('.val-score');
-        const spanGrade = tr.querySelector('.val-grade');
-        const inpScore  = tr.querySelector('.edit-score');
-        const selGrade  = tr.querySelector('.edit-grade');
+        const sName = tr.querySelector('.val-name');
+        const sVer  = tr.querySelector('.val-version');
+        const sCat  = tr.querySelector('.val-cat');
+        const sScore= tr.querySelector('.val-score');
+        const sGrade= tr.querySelector('.val-grade');
+
+        const iName = tr.querySelector('.edit-name');
+        const iVer  = tr.querySelector('.edit-version');
+        const iCat  = tr.querySelector('.edit-cat');
+        const iScore= tr.querySelector('.edit-score');
+        const iGrade= tr.querySelector('.edit-grade');
 
         function setEditMode(on){
           tr.classList.toggle('row-edit', on);
-          spanScore.style.display = on ? 'none' : '';
-          spanGrade.style.display = on ? 'none' : '';
-          inpScore.style.display  = on ? '' : 'none';
-          selGrade.style.display  = on ? '' : 'none';
+          // spans
+          [sName,sVer,sCat,sScore,sGrade].forEach(el => { if (el) el.style.display = on ? 'none' : ''; });
+          // inputs
+          [iName,iVer,iCat,iScore,iGrade].forEach(el => { if (el) el.style.display = on ? '' : 'none'; });
+          // buttons
           btnEdit.style.display   = on ? 'none' : '';
           btnSave.style.display   = on ? '' : 'none';
           btnCancel.style.display = on ? '' : 'none';
@@ -389,39 +423,62 @@
         btnEdit.addEventListener('click', (e) => {
           e.preventDefault();
           setEditMode(true);
-          inpScore.focus();
+          iName && iName.focus();
         });
 
         btnCancel.addEventListener('click', (e) => {
           e.preventDefault();
           // reset fields
-          inpScore.value = spanScore.textContent.trim();
-          selGrade.value = spanGrade.textContent.trim();
+          iName.value  = sName.textContent.trim() || '';
+          iVer.value   = sVer?.textContent.trim() || '';
+          iCat.value   = sCat?.textContent.trim() || '';
+          iScore.value = sScore.textContent.trim() || '0';
+          iGrade.value = sGrade.textContent.trim() || 'F';
           setEditMode(false);
         });
 
         btnSave.addEventListener('click', async (e) => {
           e.preventDefault();
-          const newScore = Math.max(0, Math.min(100, parseInt(inpScore.value || '0', 10)));
-          const newGrade = selGrade.value;
+          const appId   = tr.dataset.appId;
+          const assessId= tr.dataset.id;
 
-          // Update in DB
-          const upd = await supabase
-            .from('assessments')
-            .update({ total_score: newScore, grade: newGrade })
-            .eq('id', row.id)
+          const newName  = (iName?.value || '').trim() || null;
+          const newVer   = (iVer?.value || '').trim() || null;
+          const newCat   = (iCat?.value || '').trim() || null;
+          const newScore = Math.max(0, Math.min(100, parseInt(iScore.value || '0', 10)));
+          const newGrade = iGrade.value;
+
+          // 1) App-Felder updaten
+          const updApp = await supabase
+            .from('apps')
+            .update({ name: newName, version: newVer, category: newCat })
+            .eq('id', appId)
             .select()
             .single();
+          if (updApp.error) {
+            alert('App-Update fehlgeschlagen: ' + updApp.error.message);
+            return;
+          }
 
-          if (upd.error) {
-            alert('Update fehlgeschlagen: ' + upd.error.message);
+          // 2) Assessment-Felder updaten
+          const updAss = await supabase
+            .from('assessments')
+            .update({ total_score: newScore, grade: newGrade })
+            .eq('id', assessId)
+            .select()
+            .single();
+          if (updAss.error) {
+            alert('Bewertungs-Update fehlgeschlagen: ' + updAss.error.message);
             return;
           }
 
           // UI aktualisieren
-          spanScore.textContent = String(newScore);
-          spanGrade.textContent = newGrade;
-          spanGrade.style.color = gradeColor(newGrade);
+          sName.textContent  = newName || '–';
+          if (sVer)  sVer.textContent   = newVer || '–';
+          if (sCat)  sCat.textContent   = newCat || '–';
+          sScore.textContent = String(newScore);
+          sGrade.textContent = newGrade;
+          sGrade.style.color = gradeColor(newGrade);
           setEditMode(false);
         });
 
