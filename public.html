@@ -16,7 +16,7 @@
     .score{font-size:1.6rem;font-weight:700}
     .grade{font-weight:700}
     .table{width:100%;border-collapse:collapse;margin-top:8px;background:#fff;border-radius:12px;overflow:hidden}
-    .table th,.table td{padding:.6rem;border-bottom:1px solid #eee;text-align:left}
+    .table th,.table td{padding:.6rem;border-bottom:1px solid #eee;text-align:left;vertical-align:top}
     .table th{background:#f8fafc}
     .toolbar{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin:.5rem 0}
     input[type="search"]{padding:.5rem;border:1px solid #ccc;border-radius:8px;min-width:220px}
@@ -50,9 +50,11 @@
         <thead>
           <tr>
             <th>App</th>
+            <th>Version</th>
             <th>Kategorie</th>
-            <th class="muted">Bundle-ID</th>
-            <th class="muted">Erstellt</th>
+            <th>Prozent</th>
+            <th>Note</th>
+            <th class="muted">Zuletzt bewertet</th>
           </tr>
         </thead>
         <tbody id="appsTbody"></tbody>
@@ -81,107 +83,136 @@
     const appsErr = document.getElementById('appsErr');
 
     // Helpers
-    const fmtDate = iso => new Date(iso).toLocaleString('de-DE', { dateStyle:'medium', timeStyle:'short' });
+    const fmtDate = iso => iso ? new Date(iso).toLocaleString('de-DE', { dateStyle:'medium', timeStyle:'short' }) : '–';
     const escape = s => (s||'').replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+    const gradeColor = g => ({A:'#16a34a',B:'#22c55e',C:'#84cc16',D:'#eab308',E:'#f59e0b',F:'#ef4444'}[g] || '#6b7280');
+
+    // Primär aus v_app_catalog lesen (empfohlen). Fallback: aus apps + app_scores zusammenbauen.
+    async function loadCatalogPreferView(){
+      const res = await supabase
+        .from('v_app_catalog')
+        .select('*')
+        .order('last_rated_at', { ascending:false })
+        .limit(500);
+      if (res.error) throw res.error;
+      return res.data || [];
+    }
+
+    async function loadCatalogFallback(){
+      const [appsRes, scoresRes] = await Promise.all([
+        supabase.from('apps').select('id,name,version,category,created_at').order('created_at',{ascending:false}).limit(500),
+        supabase.from('app_scores').select('*').order('last_rated_at',{ascending:false}).limit(500)
+      ]);
+      if (appsRes.error) throw appsRes.error;
+      if (scoresRes.error) throw scoresRes.error;
+
+      const scoresById = new Map();
+      (scoresRes.data||[]).forEach(s => scoresById.set(s.app_id, s));
+      return (appsRes.data||[]).map(a => {
+        const sc = scoresById.get(a.id) || {};
+        return {
+          id: a.id,
+          name: a.name,
+          version: a.version,
+          category: a.category,
+          last_score: sc.last_score ?? null,
+          last_grade: sc.last_grade ?? null,
+          last_rated_at: sc.last_rated_at ?? null
+        };
+      }).sort((x,y)=> new Date(y.last_rated_at||0)-new Date(x.last_rated_at||0));
+    }
+
+    function renderCardsFromCatalog(rows){
+      // Zeige die letzten Bewertungen (Top 100) als Karten
+      cards.innerHTML = '';
+      const list = rows.slice(0,100);
+      if (!list.length) {
+        latestEmpty.style.display = 'block';
+        countEl.textContent = '0 Einträge';
+        return;
+      }
+      latestEmpty.style.display = 'none';
+      countEl.textContent = `${list.length} Einträge`;
+
+      list.forEach(row => {
+        const name = escape(row.name) || 'Unbekannte App';
+        const version = escape(row.version) || '–';
+        const cat = escape(row.category) || '–';
+        const pct = (row.last_score ?? null) === null ? '–' : `${Math.round(row.last_score)}%`;
+        const grade = row.last_grade || '–';
+        const when = fmtDate(row.last_rated_at);
+        const el = document.createElement('div');
+        el.className = 'card';
+        el.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.25rem;gap:.5rem">
+            <div style="font-weight:600">${name} <span class="muted">· ${version}</span></div>
+            <span class="tag">${cat}</span>
+          </div>
+          <div class="score" style="color:${gradeColor(grade)}">${pct}</div>
+          <div class="grade" style="color:${gradeColor(grade)}">Note ${grade}</div>
+          <div class="muted" style="margin-top:.25rem">${when}</div>
+        `;
+        cards.appendChild(el);
+      });
+    }
+
+    function renderAppsTable(rows){
+      appsTbody.innerHTML = '';
+      if (!rows.length) {
+        appsEmpty.style.display = 'block';
+        return;
+      }
+      appsEmpty.style.display = 'none';
+
+      rows.forEach(r => {
+        const tr = document.createElement('tr');
+        const pct = (r.last_score ?? null) === null ? '–' : `${Math.round(r.last_score)}%`;
+        tr.innerHTML = `
+          <td>${escape(r.name)||'–'}</td>
+          <td>${escape(r.version)||'–'}</td>
+          <td>${escape(r.category)||'–'}</td>
+          <td>${pct}</td>
+          <td style="color:${gradeColor(r.last_grade||'')}}">${r.last_grade || '–'}</td>
+          <td class="muted">${fmtDate(r.last_rated_at)}</td>
+        `;
+        appsTbody.appendChild(tr);
+      });
+    }
 
     try {
-      // Lade Daten parallel (Views sind öffentlich lesbar)
-      const [{ data: apps, error: appsErrRes },
-             { data: assessments, error: assessErrRes },
-             { data: scores, error: scoresErrRes }] = await Promise.all([
-        supabase.from('v_apps_public').select('*').order('created_at', { ascending:false }).limit(500),
-        supabase.from('v_assessments_public').select('*').order('created_at', { ascending:false }).limit(500),
-        supabase.from('app_scores').select('*').order('last_rated_at', { ascending:false }).limit(500)
-      ]);
-
-      if (appsErrRes) throw appsErrRes;
-      if (assessErrRes) throw assessErrRes;
-      if (scoresErrRes) throw scoresErrRes;
-
-      // Indexe
-      const appById = Object.create(null);
-      (apps||[]).forEach(a => { appById[a.id] = a; });
-
-      // Neueste Bewertung je App (aus assessments)
-      const latestByApp = new Map();
-      (assessments||[]).forEach(a => {
-        if (!latestByApp.has(a.app_id)) latestByApp.set(a.app_id, a);
-      });
-      const latestPerApp = Array.from(latestByApp.values())
-        .sort((a,b)=> new Date(b.created_at)-new Date(a.created_at))
-        .slice(0, 100);
-
-      function gradeColor(g){
-        return {A:'#16a34a',B:'#22c55e',C:'#84cc16',D:'#eab308',E:'#f59e0b',F:'#ef4444'}[g] || '#6b7280';
+      // Erst versuchen wir die saubere View
+      let catalog = [];
+      try {
+        catalog = await loadCatalogPreferView();
+      } catch (e) {
+        // Falls View fehlt, Fallback verwenden
+        console.warn('v_app_catalog nicht verfügbar. Nutze Fallback.', e?.message || e);
+        catalog = await loadCatalogFallback();
       }
 
-      function renderCards(list){
-        cards.innerHTML = '';
-        if (!list.length) {
-          latestEmpty.style.display = 'block';
-          countEl.textContent = '0 Einträge';
-          return;
-        }
-        latestEmpty.style.display = 'none';
+      // Render
+      renderCardsFromCatalog(catalog);
 
-        list.forEach(a => {
-          const app = appById[a.app_id] || {};
-          const name = escape(app.name)||'Unbekannte App';
-          const cat  = escape(app.category)||'–';
-          const score = a.total_score ?? 0;
-          const grade = a.grade || '–';
-          const when  = fmtDate(a.created_at);
-          const el = document.createElement('div');
-          el.className = 'card';
-          el.innerHTML = `
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.25rem">
-              <div style="font-weight:600">${name}</div>
-              <span class="tag">${cat}</span>
-            </div>
-            <div class="score" style="color:${gradeColor(grade)}">${Math.round(score)}%</div>
-            <div class="grade" style="color:${gradeColor(grade)}">Note ${grade}</div>
-            <div class="muted" style="margin-top:.25rem">${when}</div>
-          `;
-          cards.appendChild(el);
-        });
-        countEl.textContent = `${list.length} Einträge`;
-      }
-      renderCards(latestPerApp);
-
-      // Live-Suche über Karten (App-Name/Kategorie)
+      // Suche über Karten (Name/Kategorie/Version)
+      const allRows = catalog.slice(0,100);
       searchInput.addEventListener('input', () => {
         const q = searchInput.value.trim().toLowerCase();
-        if (!q) return renderCards(latestPerApp);
-        const filtered = latestPerApp.filter(a => {
-          const app = appById[a.app_id] || {};
-          return (app.name||'').toLowerCase().includes(q) ||
-                 (app.category||'').toLowerCase().includes(q);
-        });
-        renderCards(filtered);
+        if (!q) return renderCardsFromCatalog(catalog);
+        const filtered = catalog.filter(r =>
+          (r.name||'').toLowerCase().includes(q) ||
+          (r.category||'').toLowerCase().includes(q) ||
+          (r.version||'').toLowerCase().includes(q)
+        );
+        renderCardsFromCatalog(filtered);
       });
 
-      // Apps-Tabelle rendern
-      appsTbody.innerHTML = '';
-      if (!apps || !apps.length) {
-        appsEmpty.style.display = 'block';
-      } else {
-        appsEmpty.style.display = 'none';
-        apps.forEach(a => {
-          const tr = document.createElement('tr');
-          tr.innerHTML = `
-            <td>${escape(a.name)}</td>
-            <td>${escape(a.category)||'–'}</td>
-            <td class="muted">${escape(a.bundle_id)||'–'}</td>
-            <td class="muted">${fmtDate(a.created_at)}</td>
-          `;
-          appsTbody.appendChild(tr);
-        });
-      }
+      // Tabelle rendern
+      renderAppsTable(catalog);
     } catch (err) {
       console.error(err);
-      latestErr.textContent = 'Fehler beim Laden der Bewertungen: ' + (err?.message || err);
+      latestErr.textContent = 'Fehler beim Laden: ' + (err?.message || err);
       latestErr.style.display = 'block';
-      appsErr.textContent = 'Fehler beim Laden des App-Katalogs: ' + (err?.message || err);
+      appsErr.textContent = 'Fehler beim Laden: ' + (err?.message || err);
       appsErr.style.display = 'block';
     }
   </script>
