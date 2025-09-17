@@ -25,6 +25,7 @@
     .btn-primary{background:#111827;color:#fff;border-color:#111827}
     .section{margin-top:1.25rem}
     .muted{color:#6b7280}
+    .toolbar{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin:.75rem 0}
   </style>
 </head>
 <body>
@@ -54,6 +55,12 @@
     <div id="adminNote" class="note warn hidden">
       Du bist eingeloggt, aber kein Admin. Bewertungen können nur Admins erstellen.
       Ergebnisse siehst du hier: <a href="./public.html">Letzte Bewertungen</a>.
+    </div>
+
+    <!-- Admin-Toolbar (sichtbar für Admins) -->
+    <div id="adminToolbar" class="toolbar" style="display:none">
+      <button id="btnNewAssessmentTop" type="button" class="btn btn-primary">+ Neue Bewertung</button>
+      <button type="button" class="btn" onclick="location.href='./public.html'">Öffentliche Übersicht öffnen</button>
     </div>
 
     <!-- FORMULAR (nur Admin sichtbar) -->
@@ -120,7 +127,8 @@
       </div>
 
       <div class="footer">
-        <button id="restartBtn" class="btn">Neu bewerten</button>
+        <!-- Bestehender Restart-Button (von app.js genutzt) -->
+        <button id="restartBtn" class="btn">Weitere Bewertung</button>
         <button type="button" class="btn" onclick="location.href='./public.html'">← Öffentliche Übersicht</button>
       </div>
     </section>
@@ -128,6 +136,9 @@
     <!-- ADMIN VERWALTUNG -->
     <section id="manage" class="section" style="display:none">
       <h2>Verwalten (Apps & Bewertungen)</h2>
+      <div class="toolbar">
+        <button id="btnNewAssessmentManage" type="button" class="btn btn-primary">+ Neue Bewertung</button>
+      </div>
       <table class="table">
         <thead>
           <tr>
@@ -146,7 +157,7 @@
     </section>
   </div>
 
-  <!-- App-Logik -->
+  <!-- App-Logik (rendert Fragen & feuert eazy:result) -->
   <script src="./js/app.js"></script>
 
   <!-- Supabase + Admin-Funktionen -->
@@ -167,10 +178,16 @@
     const manageSec  = document.getElementById('manage');
     const manageTbody= document.getElementById('manageTbody');
     const manageEmpty= document.getElementById('manageEmpty');
+    const adminToolbar = document.getElementById('adminToolbar');
+
+    const btnNewAssessmentTop = document.getElementById('btnNewAssessmentTop');
+    const btnNewAssessmentManage = document.getElementById('btnNewAssessmentManage');
+    const resultSection = document.getElementById('resultSection');
+    const restartBtn = document.getElementById('restartBtn');
 
     function setLoggedInUI(){ loginForm.style.display='none'; loginStatus.style.display='flex'; }
     function setLoggedOutUI(){ loginForm.style.display='block'; loginStatus.style.display='none';
-      auditForm.style.display='none'; adminNote.classList.add('hidden'); manageSec.style.display='none';
+      auditForm.style.display='none'; adminNote.classList.add('hidden'); manageSec.style.display='none'; adminToolbar.style.display='none';
     }
 
     async function isAdmin() {
@@ -187,11 +204,13 @@
       if (await isAdmin()) {
         auditForm.style.display = 'block';
         manageSec.style.display = 'block';
+        adminToolbar.style.display = 'flex';
         adminNote.classList.add('hidden');
         await loadManage();
       } else {
         auditForm.style.display = 'none';
         manageSec.style.display = 'none';
+        adminToolbar.style.display = 'none';
         adminNote.classList.remove('hidden');
       }
     }
@@ -229,8 +248,7 @@
     async function loadManage() {
       manageTbody.innerHTML = '';
       const { data: catalog, error } = await supabase
-        .from('v_app_catalog')
-        .select('*')
+        .from('v_app_catalog').select('*')
         .order('last_rated_at',{ascending:false})
         .limit(1000);
       if (error) { manageEmpty.style.display='block'; return; }
@@ -290,23 +308,19 @@
     }
 
     async function manageAssessments(appId) {
-      // Liste Bewertungen:
       const { data: rows, error } = await supabase
         .from('assessments').select('id,total_score,grade,created_at').eq('app_id', appId).order('created_at',{ascending:false});
       if (error) return alert(error.message);
       if (!rows?.length) return alert('Keine Bewertungen vorhanden.');
 
-      // Einfache Auswahl
       const menu = rows.map((r,i)=> `${i+1}) ${fmtDate(r.created_at)} – ${Math.round(r.total_score)}% (Note ${r.grade})`).join('\n');
       const pick = prompt(`Bewertung wählen (Nummer):\n${menu}\n\nAktionen:\n- OK: gewählte Bewertung bearbeiten\n- Abbrechen: nichts tun`);
       const idx = (pick? parseInt(pick,10):NaN)-1;
       if (!(idx>=0 && idx<rows.length)) return;
 
       const row = rows[idx];
-      // Bearbeiten
       const newScore = prompt('Score in % (0-100):', Math.round(row.total_score)) ?? Math.round(row.total_score);
       const newGrade = prompt('Note (A–F):', row.grade||'F') ?? row.grade;
-
       if (newScore === null || newGrade === null) return;
       if (!/^[A-F]$/.test(String(newGrade).toUpperCase())) return alert('Ungültige Note (A–F).');
 
@@ -322,6 +336,25 @@
       alert('Fertig.');
       await loadManage();
     }
+
+    // ===== Neue Bewertung: Formular schnell öffnen/neu starten =====
+    function startNewAssessment() {
+      const r = document.getElementById('resultSection');
+      const f = document.getElementById('auditForm');
+      // Wenn Ergebnis sichtbar -> app.js hat einen Restart-Handler auf #restartBtn, den nutzen wir:
+      if (!r.classList.contains('hidden')) {
+        document.getElementById('restartBtn')?.click();
+      } else {
+        // Form sauber zurücksetzen und sichtbar machen
+        f.reset();
+        f.style.display = 'block';
+        // Falls Fragen bereits gerendert sind, reicht reset; ansonsten einfach so lassen (app.js rendert initial).
+      }
+      window.scrollTo({ top: f.offsetTop - 12, behavior: 'smooth' });
+    }
+
+    btnNewAssessmentTop.addEventListener('click', startNewAssessment);
+    btnNewAssessmentManage.addEventListener('click', startNewAssessment);
 
     // ====== SPEICHERN (Reaktion auf eazy:result aus app.js) ======
     function slugify(s){return (s||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');}
@@ -352,13 +385,12 @@
         const bundleId = slugify(`${appName}-${version}`);
 
         const app = await getOrCreateApp({ bundleId, name: appName, category });
-        // Version bei Bedarf aktualisieren
-        if (app.version !== version) {
-          await supabase.from('apps').update({ version }).eq('id', app.id);
-        }
+        if (app.version !== version) await supabase.from('apps').update({ version }).eq('id', app.id);
         await saveAssessment({ appId: app.id, answers, totalScore: score, grade });
         alert("Bewertung gespeichert.");
-        await loadManage();
+
+        // Direkt für weitere Bewertungen bereit machen:
+        startNewAssessment();
       } catch (e) {
         alert('Fehler beim Speichern: ' + (e?.message || e));
       }
