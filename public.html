@@ -40,7 +40,7 @@
       </nav>
     </header>
 
-    <!-- Zurück-Button nur für Superadmin (alias == "mareenika") -->
+    <!-- Zurück-Button nur für Superadmins -->
     <div id="adminBack" style="display:none; margin:1rem 0;">
       <button class="btn btn-primary" onclick="location.href='./index.html'">← Zurück zur Bewertung</button>
     </div>
@@ -139,13 +139,16 @@
     const escape = s => (s||'').replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
     const gradeColor = g => ({A:'#16a34a',B:'#22c55e',C:'#84cc16',D:'#eab308',E:'#f59e0b',F:'#ef4444'}[g] || '#6b7280');
 
-    // Superadmin-Back-Button
+    // Superadmin-Back-Button: sichtbar für jeden mit admins.is_superadmin = true
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
         const { data: admin } = await supabase
-          .from('admins').select('alias').eq('user_id', session.user.id).maybeSingle();
-        if (admin?.alias === 'mareenika') adminBack.style.display = 'block';
+          .from('admins')
+          .select('is_superadmin')
+          .eq('user_id', session.user.id)
+          .maybeSingle();
+        if (admin?.is_superadmin) adminBack.style.display = 'block';
       }
     } catch {}
 
@@ -159,6 +162,9 @@
       if (appsErrRes) throw appsErrRes;
       if (assessErrRes) throw assessErrRes;
 
+      // Map für schnellen Zugriff
+      const appMap = new Map((apps||[]).map(a => [a.id, a]));
+
       // Neueste je App
       const latestByApp = new Map();
       (assessments||[]).forEach(a => { if (!latestByApp.has(a.app_id)) latestByApp.set(a.app_id, a); });
@@ -171,7 +177,7 @@
         if (!list.length) { latestEmpty.style.display='block'; countEl.textContent='0 Einträge'; return; }
         latestEmpty.style.display='none';
         list.forEach(a => {
-          const app = (apps||[]).find(ap => ap.id===a.app_id) || {};
+          const app = appMap.get(a.app_id) || {};
           const el = document.createElement('div');
           el.className = 'card';
           el.innerHTML = `
@@ -194,30 +200,32 @@
         const q = (searchInput.value||'').trim().toLowerCase();
         if (!q) return renderCards(latestPerApp);
         const filtered = latestPerApp.filter(a => {
-          const app = (apps||[]).find(ap => ap.id===a.app_id) || {};
+          const app = appMap.get(a.app_id) || {};
           return (app.name||'').toLowerCase().includes(q) || (app.category||'').toLowerCase().includes(q);
         });
         renderCards(filtered);
       });
 
-      // Katalog
+      // Katalog – alphabetisch nach Name
       appsTbody.innerHTML = '';
       if (!apps?.length) {
         appsEmpty.style.display='block';
       } else {
         appsEmpty.style.display='none';
-        apps.forEach(a => {
-          const tr = document.createElement('tr');
-          tr.innerHTML = `
-            <td>${escape(a.name)}</td>
-            <td>${escape(a.version)||'–'}</td>
-            <td>${escape(a.category)||'–'}</td>
-            <td style="color:${gradeColor(a.last_grade)}">${a.last_score!=null? Math.round(a.last_score)+'%':'–'}</td>
-            <td style="color:${gradeColor(a.last_grade)}">${a.last_grade||'–'}</td>
-            <td class="muted">${a.last_rated_at? fmtDate(a.last_rated_at) : '–'}</td>
-          `;
-          appsTbody.appendChild(tr);
-        });
+        [...apps]
+          .sort((x,y)=> (x.name||'').localeCompare(y.name||'', 'de', {sensitivity:'base'}))
+          .forEach(a => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+              <td>${escape(a.name)}</td>
+              <td>${escape(a.version)||'–'}</td>
+              <td>${escape(a.category)||'–'}</td>
+              <td style="color:${gradeColor(a.last_grade)}">${a.last_score!=null? Math.round(a.last_score)+'%':'–'}</td>
+              <td style="color:${gradeColor(a.last_grade)}">${a.last_grade||'–'}</td>
+              <td class="muted">${a.last_rated_at? fmtDate(a.last_rated_at) : '–'}</td>
+            `;
+            appsTbody.appendChild(tr);
+          });
       }
     } catch (err) {
       latestErr.textContent = 'Fehler beim Laden: ' + (err?.message||err);
@@ -227,7 +235,6 @@
     }
 
     // === Vorschläge ===
-    // Rate-Limit clientseitig: 1 Vorschlag / 30 Sekunden
     const canSuggest = () => {
       const last = +localStorage.getItem('eazy:lastSuggestTs')||0;
       return Date.now() - last > 30_000;
