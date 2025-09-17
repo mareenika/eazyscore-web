@@ -19,11 +19,16 @@
     .table th,.table td{padding:.6rem;border-bottom:1px solid #eee;text-align:left}
     .table th{background:#f8fafc}
     .toolbar{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin:.5rem 0}
-    input[type="search"]{padding:.5rem;border:1px solid #ccc;border-radius:8px;min-width:220px}
+    input[type="search"], input[type="url"], input[type="text"], textarea{padding:.5rem;border:1px solid #ccc;border-radius:8px;min-width:220px}
+    textarea{min-height:84px;width:100%}
     .empty{padding:1rem;border:1px dashed #ddd;border-radius:12px;color:#6b7280;background:#fff}
     .error{padding:.75rem;border:1px solid #fca5a5;background:#fef2f2;color:#7f1d1d;border-radius:8px}
-    .btn{padding:.35rem .7rem;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer}
+    .btn{padding:.45rem .8rem;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer}
     .btn-primary{background:#111827;color:#fff;border-color:#111827}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    @media (max-width:720px){.grid{grid-template-columns:1fr}}
+    .section{margin-top:1.25rem}
+    .suggestion{border:1px solid #e5e7eb;border-radius:10px;padding:.6rem;background:#fff}
   </style>
 </head>
 <body>
@@ -51,8 +56,8 @@
       <div id="latestErr" class="error" style="display:none"></div>
     </section>
 
-    <section id="apps">
-      <h2 style="margin-top:1.25rem">Apps (Katalog)</h2>
+    <section id="apps" class="section">
+      <h2>Apps (Katalog)</h2>
       <table class="table" id="appsTable">
         <thead>
           <tr>
@@ -68,6 +73,37 @@
       </table>
       <div id="appsEmpty" class="empty" style="display:none">Noch keine Apps im Katalog.</div>
       <div id="appsErr" class="error" style="display:none"></div>
+    </section>
+
+    <!-- Öffentliche Vorschlagsbox -->
+    <section id="suggest" class="section">
+      <h2>App vorschlagen</h2>
+      <p class="muted" style="margin:.25rem 0 .75rem">
+        Schlage eine App vor, die wir bewerten sollen. (Kein Login nötig)
+      </p>
+      <form id="suggestForm" class="grid" novalidate>
+        <div>
+          <label for="sName">App-Name *</label><br>
+          <input id="sName" type="text" placeholder="z. B. WhatsApp" required style="width:100%">
+        </div>
+        <div>
+          <label for="sUrl">Store-Link (optional)</label><br>
+          <input id="sUrl" type="url" placeholder="https://apps.apple.com/..." style="width:100%">
+        </div>
+        <div style="grid-column:1/-1">
+          <label for="sNote">Notiz (optional)</label><br>
+          <textarea id="sNote" placeholder="Warum soll die App geprüft werden?"></textarea>
+        </div>
+        <div style="grid-column:1/-1;display:flex;gap:.5rem;align-items:center">
+          <button class="btn btn-primary" type="submit">Vorschlag senden</button>
+          <span id="sMsg" class="muted"></span>
+        </div>
+      </form>
+
+      <h3 style="margin-top:1rem">Zuletzt vorgeschlagen</h3>
+      <div id="sList" class="cards"></div>
+      <div id="sEmpty" class="empty" style="display:none">Noch keine Vorschläge eingegangen.</div>
+      <div id="sErr" class="error" style="display:none"></div>
     </section>
   </div>
 
@@ -89,25 +125,32 @@
     const appsErr = document.getElementById('appsErr');
     const adminBack = document.getElementById('adminBack');
 
+    // Suggest UI
+    const sForm = document.getElementById('suggestForm');
+    const sName = document.getElementById('sName');
+    const sUrl  = document.getElementById('sUrl');
+    const sNote = document.getElementById('sNote');
+    const sMsg  = document.getElementById('sMsg');
+    const sList = document.getElementById('sList');
+    const sEmpty= document.getElementById('sEmpty');
+    const sErr  = document.getElementById('sErr');
+
     const fmtDate = iso => new Date(iso).toLocaleString('de-DE', { dateStyle:'medium', timeStyle:'short' });
     const escape = s => (s||'').replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
     const gradeColor = g => ({A:'#16a34a',B:'#22c55e',C:'#84cc16',D:'#eab308',E:'#f59e0b',F:'#ef4444'}[g] || '#6b7280');
 
+    // Superadmin-Back-Button
     try {
-      // (1) Button nur für Superadmin alias "mareenika"
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
         const { data: admin } = await supabase
-          .from('admins')
-          .select('alias')
-          .eq('user_id', session.user.id)
-          .maybeSingle();
-        if (admin?.alias === 'mareenika') {
-          adminBack.style.display = 'block';
-        }
+          .from('admins').select('alias').eq('user_id', session.user.id).maybeSingle();
+        if (admin?.alias === 'mareenika') adminBack.style.display = 'block';
       }
+    } catch {}
 
-      // (2) Daten laden (Views sind öffentlich)
+    // Daten laden (Bewertungen + Katalog)
+    try {
       const [{ data: apps, error: appsErrRes },
              { data: assessments, error: assessErrRes }] = await Promise.all([
         supabase.from('v_app_catalog').select('*').limit(500),
@@ -116,14 +159,13 @@
       if (appsErrRes) throw appsErrRes;
       if (assessErrRes) throw assessErrRes;
 
-      // Neueste Bewertung je App
+      // Neueste je App
       const latestByApp = new Map();
       (assessments||[]).forEach(a => { if (!latestByApp.has(a.app_id)) latestByApp.set(a.app_id, a); });
       const latestPerApp = Array.from(latestByApp.values())
         .sort((a,b)=> new Date(b.created_at)-new Date(a.created_at))
         .slice(0, 100);
 
-      // Karten rendern
       function renderCards(list){
         cards.innerHTML = '';
         if (!list.length) { latestEmpty.style.display='block'; countEl.textContent='0 Einträge'; return; }
@@ -148,7 +190,7 @@
       renderCards(latestPerApp);
 
       // Suche
-      const filterCards = () => {
+      searchInput.addEventListener('input', () => {
         const q = (searchInput.value||'').trim().toLowerCase();
         if (!q) return renderCards(latestPerApp);
         const filtered = latestPerApp.filter(a => {
@@ -156,10 +198,9 @@
           return (app.name||'').toLowerCase().includes(q) || (app.category||'').toLowerCase().includes(q);
         });
         renderCards(filtered);
-      };
-      searchInput.addEventListener('input', filterCards);
+      });
 
-      // Apps-Katalog rendern
+      // Katalog
       appsTbody.innerHTML = '';
       if (!apps?.length) {
         appsEmpty.style.display='block';
@@ -179,12 +220,77 @@
         });
       }
     } catch (err) {
-      console.error(err);
       latestErr.textContent = 'Fehler beim Laden: ' + (err?.message||err);
       latestErr.style.display='block';
       appsErr.textContent = 'Fehler beim Laden: ' + (err?.message||err);
       appsErr.style.display='block';
     }
+
+    // === Vorschläge ===
+    // Rate-Limit clientseitig: 1 Vorschlag / 30 Sekunden
+    const canSuggest = () => {
+      const last = +localStorage.getItem('eazy:lastSuggestTs')||0;
+      return Date.now() - last > 30_000;
+    };
+    const markSuggest = () => localStorage.setItem('eazy:lastSuggestTs', String(Date.now()));
+
+    async function loadSuggestions(){
+      try{
+        const { data, error } = await supabase
+          .from('app_suggestions')
+          .select('app_name, store_url, note, created_at')
+          .order('created_at',{ascending:false})
+          .limit(12);
+        if (error) throw error;
+
+        sList.innerHTML = '';
+        if (!data?.length){ sEmpty.style.display='block'; return; }
+        sEmpty.style.display='none';
+
+        data.forEach(s => {
+          const card = document.createElement('div');
+          card.className = 'suggestion';
+          card.innerHTML = `
+            <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+              <div style="font-weight:600">${escape(s.app_name)}</div>
+              ${s.store_url ? `<a class="tag" href="${escape(s.store_url)}" target="_blank" rel="noopener">Store</a>`:''}
+            </div>
+            ${s.note ? `<div class="muted" style="margin-top:.25rem">${escape(s.note)}</div>`:''}
+            <div class="muted" style="margin-top:.25rem">${fmtDate(s.created_at)}</div>
+          `;
+          sList.appendChild(card);
+        });
+      }catch(err){
+        sErr.textContent = 'Fehler beim Laden der Vorschläge: ' + (err?.message||err);
+        sErr.style.display='block';
+      }
+    }
+    await loadSuggestions();
+
+    sForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      sMsg.textContent = '';
+
+      const name = sName.value.trim();
+      const url  = sUrl.value.trim();
+      const note = sNote.value.trim();
+
+      if (!name){ sMsg.textContent = 'Bitte einen App-Namen angeben.'; return; }
+      if (!canSuggest()){ sMsg.textContent = 'Bitte warte kurz, bevor du erneut sendest.'; return; }
+
+      try{
+        const { error } = await supabase.from('app_suggestions')
+          .insert({ app_name: name, store_url: url || null, note: note || null });
+        if (error) throw error;
+
+        markSuggest();
+        sForm.reset();
+        sMsg.textContent = 'Danke! Vorschlag gesendet.';
+        await loadSuggestions();
+      }catch(err){
+        sMsg.textContent = 'Senden fehlgeschlagen: ' + (err?.message||err);
+      }
+    });
   </script>
 </body>
 </html>
