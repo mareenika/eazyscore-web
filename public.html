@@ -23,22 +23,27 @@
     textarea{min-height:84px;width:100%}
     .empty{padding:1rem;border:1px dashed #ddd;border-radius:12px;color:#6b7280;background:#fff}
     .error{padding:.75rem;border:1px solid #fca5a5;background:#fef2f2;color:#7f1d1d;border-radius:8px}
-    .btn{padding:.45rem .8rem;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer}
+    .btn{padding:.45rem .8rem;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;min-width:140px;justify-content:center;display:inline-flex;align-items:center;text-align:center}
     .btn-primary{background:#111827;color:#fff;border-color:#111827}
     .btn-danger{background:#991b1b;color:#fff;border-color:#991b1b}
+    .btn-row{display:flex;gap:.5rem;align-items:center}
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
     @media (max-width:720px){.grid{grid-template-columns:1fr}}
     .section{margin-top:1.25rem}
     .suggestion{border:1px solid #e5e7eb;border-radius:10px;padding:.6rem;background:#fff}
     .row{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
+    /* Toast */
+    #toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#111827;color:#fff;padding:.6rem .9rem;border-radius:10px;opacity:0;pointer-events:none;transition:.25s;box-shadow:0 8px 24px rgba(0,0,0,.18);z-index:9999}
+    #toast.show{opacity:1;pointer-events:auto}
+    .label{font-size:.8rem;font-weight:600;color:#374151}
   </style>
 </head>
 <body>
   <div class="wrap">
     <header>
       <h1>EAZY Score – Öffentliche Übersicht</h1>
-      <nav>
-        <a class="tag" href="./index.html">→ Admin / Login</a>
+      <nav class="btn-row">
+        <a class="btn" href="./index.html">Admin / Login</a>
       </nav>
     </header>
 
@@ -109,6 +114,9 @@
     </section>
   </div>
 
+  <!-- Toast -->
+  <div id="toast" role="status" aria-live="polite"></div>
+
   <script type="module">
     import { createClient } from "https://esm.sh/@supabase/supabase-js";
 
@@ -116,6 +124,13 @@
       "https://lhdztkfvrnsqfnbqybfq.supabase.co",
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxoZHp0a2Z2cm5zcWZuYnF5YmZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTczMjIxMjMsImV4cCI6MjA3Mjg5ODEyM30.81BVX5zf_WxE3RdTw32OttwsiMgDanXdNIkWeug-jUs"
     );
+
+    const toast = document.getElementById('toast');
+    function showToast(msg){
+      toast.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(()=> toast.classList.remove('show'), 1800);
+    }
 
     const cards = document.getElementById('cards');
     const searchInput = document.getElementById('search');
@@ -195,7 +210,7 @@
       }
       renderCards(latestPerApp);
 
-      // Suche
+      // Suche (reagiert ab dem ersten Zeichen)
       searchInput.addEventListener('input', () => {
         const q = (searchInput.value||'').trim().toLowerCase();
         if (!q) return renderCards(latestPerApp);
@@ -258,37 +273,55 @@
           card.className = 'suggestion';
 
           if (!isSuperadmin) {
-            // Gäste-Ansicht
+            // Gäste-Ansicht – mit „Prozess-Status“-Label
             card.innerHTML = `
               <div class="row" style="justify-content:space-between">
                 <div style="font-weight:600">${escape(s.app_name)}</div>
-                <span class="tag">${escape(s.status || 'Neu')}</span>
+                <div>
+                  <div class="label" style="text-align:right">Prozess-Status</div>
+                  <span class="tag">${escape(s.status || 'Neu')}</span>
+                </div>
               </div>
               ${s.store_url ? `<div style="margin-top:.25rem"><a class="tag" href="${escape(s.store_url)}" target="_blank" rel="noopener">Store</a></div>`:''}
               ${s.note ? `<div class="muted" style="margin-top:.25rem">${escape(s.note)}</div>`:''}
               <div class="muted" style="margin-top:.25rem">${fmtDate(s.created_at)}</div>
             `;
           } else {
-            // Superadmin: editierbar
+            // Superadmin: editierbar – alles symmetrisch + Labels
             const id = s.id;
             card.innerHTML = `
-              <div class="row">
-                <input type="text" class="sa-name" placeholder="App-Name" value="${escape(s.app_name)}" style="flex:1;min-width:160px">
-                <select class="sa-status">
-                  <option value="Neu"${(s.status||'Neu')==='Neu'?' selected':''}>Neu</option>
-                  <option value="In Bearbeitung"${s.status==='In Bearbeitung'?' selected':''}>In Bearbeitung</option>
-                  <option value="Fertig"${s.status==='Fertig'?' selected':''}>Fertig</option>
-                </select>
+              <div class="row" style="width:100%;justify-content:space-between;align-items:flex-end">
+                <div style="flex:1;min-width:160px">
+                  <div class="label">App-Name</div>
+                  <input type="text" class="sa-name" placeholder="App-Name" value="${escape(s.app_name)}" style="width:100%">
+                </div>
+                <div style="min-width:220px">
+                  <div class="label">Prozess-Status</div>
+                  <select class="sa-status" style="width:100%">
+                    <option value="Neu"${(s.status||'Neu')==='Neu'?' selected':''}>Neu</option>
+                    <option value="In Bearbeitung"${s.status==='In Bearbeitung'?' selected':''}>In Bearbeitung</option>
+                    <option value="Fertig"${s.status==='Fertig'?' selected':''}>Fertig</option>
+                  </select>
+                </div>
               </div>
-              <div class="row" style="margin-top:.4rem">
-                <input type="url" class="sa-url" placeholder="Store-Link" value="${escape(s.store_url||'')}" style="flex:1;min-width:200px">
+
+              <div class="row" style="margin-top:.6rem; width:100%">
+                <div style="flex:1;min-width:200px">
+                  <div class="label">Store-Link</div>
+                  <input type="url" class="sa-url" placeholder="https://…" value="${escape(s.store_url||'')}" style="width:100%">
+                </div>
               </div>
-              <div class="row" style="margin-top:.4rem">
-                <textarea class="sa-note" placeholder="Notiz" style="width:100%">${escape(s.note||'')}</textarea>
+
+              <div class="row" style="margin-top:.6rem; width:100%">
+                <div style="flex:1">
+                  <div class="label">Notiz</div>
+                  <textarea class="sa-note" placeholder="Notiz" style="width:100%">${escape(s.note||'')}</textarea>
+                </div>
               </div>
-              <div class="row" style="margin-top:.5rem;justify-content:space-between">
+
+              <div class="row" style="margin-top:.6rem; width:100%; justify-content:space-between">
                 <div class="muted">${fmtDate(s.created_at)}</div>
-                <div class="row">
+                <div class="btn-row">
                   <button class="btn btn-primary sa-save">Speichern</button>
                   <button class="btn btn-danger sa-del">Löschen</button>
                 </div>
@@ -304,12 +337,11 @@
             const $del  = card.querySelector('.sa-del');
 
             $save.addEventListener('click', async () => {
-              // WICHTIG: status IMMER mitsenden
               const payload = {
                 app_name: $name.value.trim(),
                 store_url: $url.value.trim() || null,
                 note: $note.value.trim() || null,
-                status: $status.value      // <-- entscheidend, sonst fällt DB evtl. auf Default "Neu" zurück
+                status: $status.value
               };
               try{
                 const { error } = await supabase
@@ -317,6 +349,7 @@
                   .update(payload)
                   .eq('id', id);
                 if (error) throw error;
+                showToast('Änderungen gespeichert');
                 await loadSuggestions();
               }catch(err){
                 alert('Speichern fehlgeschlagen: ' + (err?.message||err));
@@ -331,6 +364,7 @@
                   .delete()
                   .eq('id', id);
                 if (error) throw error;
+                showToast('Vorschlag gelöscht');
                 await loadSuggestions();
               }catch(err){
                 alert('Löschen fehlgeschlagen: ' + (err?.message||err));
@@ -361,7 +395,6 @@
       if (Date.now() - last <= 30_000){ sMsg.textContent = 'Bitte warte kurz, bevor du erneut sendest.'; return; }
 
       try{
-        // Neue Vorschläge standardmäßig Status "Neu"
         const { error } = await supabase.from('app_suggestions')
           .insert({ app_name: name, store_url: url || null, note: note || null, status: 'Neu' });
         if (error) throw error;
@@ -369,6 +402,7 @@
         localStorage.setItem('eazy:lastSuggestTs', String(Date.now()));
         sForm.reset();
         sMsg.textContent = 'Danke! Vorschlag gesendet.';
+        showToast('Vorschlag übermittelt');
         await loadSuggestions();
       }catch(err){
         sMsg.textContent = 'Senden fehlgeschlagen: ' + (err?.message||err);
