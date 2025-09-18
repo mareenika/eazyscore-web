@@ -16,38 +16,31 @@
     .score{font-size:1.6rem;font-weight:700}
     .grade{font-weight:700}
     .table{width:100%;border-collapse:collapse;margin-top:8px;background:#fff;border-radius:12px;overflow:hidden}
-    .table th,.table td{padding:.6rem;border-bottom:1px solid #eee;text-align:left}
+    .table th,.table td{padding:.6rem;border-bottom:1px solid #eee;text-align:left;vertical-align:middle}
     .table th{background:#f8fafc}
     .toolbar{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin:.5rem 0}
     input[type="search"], input[type="url"], input[type="text"], textarea, select{padding:.5rem;border:1px solid #ccc;border-radius:8px;min-width:220px}
     textarea{min-height:84px;width:100%}
     .empty{padding:1rem;border:1px dashed #ddd;border-radius:12px;color:#6b7280;background:#fff}
     .error{padding:.75rem;border:1px solid #fca5a5;background:#fef2f2;color:#7f1d1d;border-radius:8px}
-    .btn{padding:.45rem .8rem;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;min-width:140px;justify-content:center;display:inline-flex;align-items:center;text-align:center}
+    .btn{padding:.45rem .8rem;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer}
     .btn-primary{background:#111827;color:#fff;border-color:#111827}
     .btn-danger{background:#991b1b;color:#fff;border-color:#991b1b}
-    .btn-row{display:flex;gap:.5rem;align-items:center}
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
     @media (max-width:720px){.grid{grid-template-columns:1fr}}
     .section{margin-top:1.25rem}
     .suggestion{border:1px solid #e5e7eb;border-radius:10px;padding:.6rem;background:#fff}
     .row{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
-    .label{font-size:.8rem;font-weight:600;color:#374151}
-    /* Toast */
-    #toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#111827;color:#fff;padding:.6rem .9rem;border-radius:10px;opacity:0;pointer-events:none;transition:.25s;box-shadow:0 8px 24px rgba(0,0,0,.18);z-index:9999}
-    #toast.show{opacity:1;pointer-events:auto}
-    /* Admin Sektion */
-    #adminPanel{display:none;margin-top:1.5rem;border:1px solid #e5e7eb;border-radius:12px;padding:12px;background:#fff}
-    #adminPanel h2{margin-top:0}
-    .actions .btn{min-width:120px}
+    .admin-actions{display:flex;gap:.4rem;justify-content:flex-end}
   </style>
 </head>
 <body>
   <div class="wrap">
     <header>
       <h1>EAZY Score – Öffentliche Übersicht</h1>
-      <nav class="btn-row">
-        <a class="btn" href="./index.html">Admin / Login</a>
+      <nav class="row">
+        <a class="tag" href="./index.html">→ Admin / Login</a>
+        <span id="whoAmI" class="muted" style="display:none"></span>
       </nav>
     </header>
 
@@ -78,6 +71,7 @@
             <th>Prozent</th>
             <th>Note</th>
             <th class="muted">Zuletzt bewertet</th>
+            <th id="thActions" style="display:none">Aktionen</th>
           </tr>
         </thead>
         <tbody id="appsTbody"></tbody>
@@ -116,31 +110,7 @@
       <div id="sEmpty" class="empty" style="display:none">Noch keine Vorschläge eingegangen.</div>
       <div id="sErr" class="error" style="display:none"></div>
     </section>
-
-    <!-- ADMIN: Apps & Bewertungen verwalten (nur Superadmin) -->
-    <section id="adminPanel">
-      <h2>Verwalten (Apps & Bewertungen)</h2>
-      <p class="muted" style="margin:.25rem 0 .75rem">Hier kannst du App-Daten bearbeiten oder Apps vollständig löschen. Bewertungen lassen sich pro App einsehen, anpassen oder löschen.</p>
-      <table class="table">
-        <thead>
-          <tr>
-            <th>App</th>
-            <th>Version</th>
-            <th>Kategorie</th>
-            <th>Score</th>
-            <th>Note</th>
-            <th class="muted">Zuletzt</th>
-            <th>Aktionen</th>
-          </tr>
-        </thead>
-        <tbody id="manageTbody"></tbody>
-      </table>
-      <div id="manageEmpty" class="empty" style="display:none">Keine Einträge vorhanden.</div>
-    </section>
   </div>
-
-  <!-- Toast -->
-  <div id="toast" role="status" aria-live="polite"></div>
 
   <script type="module">
     import { createClient } from "https://esm.sh/@supabase/supabase-js";
@@ -149,13 +119,6 @@
       "https://lhdztkfvrnsqfnbqybfq.supabase.co",
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxoZHp0a2Z2cm5zcWZuYnF5YmZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTczMjIxMjMsImV4cCI6MjA3Mjg5ODEyM30.81BVX5zf_WxE3RdTw32OttwsiMgDanXdNIkWeug-jUs"
     );
-
-    const toast = document.getElementById('toast');
-    function showToast(msg){
-      toast.textContent = msg;
-      toast.classList.add('show');
-      setTimeout(()=> toast.classList.remove('show'), 1600);
-    }
 
     const cards = document.getElementById('cards');
     const searchInput = document.getElementById('search');
@@ -166,55 +129,68 @@
     const appsEmpty = document.getElementById('appsEmpty');
     const appsErr = document.getElementById('appsErr');
     const adminBack = document.getElementById('adminBack');
+    const whoAmI = document.getElementById('whoAmI');
+    const thActions = document.getElementById('thActions');
 
     // Suggest UI
     const sForm = document.getElementById('suggestForm');
     const sName = document.getElementById('sName');
     const sUrl  = document.getElementById('sUrl');
-    the sNote = document.getElementById('sNote');
+    const sNote = document.getElementById('sNote');
     const sMsg  = document.getElementById('sMsg');
     const sList = document.getElementById('sList');
     const sEmpty= document.getElementById('sEmpty');
     const sErr  = document.getElementById('sErr');
 
     const fmtDate = iso => new Date(iso).toLocaleString('de-DE', { dateStyle:'medium', timeStyle:'short' });
-    const escape = s => (s||'').replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+    const escapeHtml = s => (s||'').replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
     const gradeColor = g => ({A:'#16a34a',B:'#22c55e',C:'#84cc16',D:'#eab308',E:'#f59e0b',F:'#ef4444'}[g] || '#6b7280');
 
-    // Superadmin Sichtbarkeit
+    // ==== Admin-Erkennung ====
+    let isAdmin = false;
     let isSuperadmin = false;
+    let adminAlias = null;
+
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
-        const { data: admin } = await supabase
-          .from('admins').select('alias, is_superadmin').eq('user_id', session.user.id).maybeSingle();
-        if (admin?.alias === 'mareenika' || admin?.is_superadmin) {
-          isSuperadmin = true;
-          adminBack.style.display = 'block';
-          document.getElementById('adminPanel').style.display = 'block';
+        const { data: adminRow } = await supabase
+          .from('admins')
+          .select('alias, is_superadmin')
+          .eq('user_id', session.user.id)
+          .maybeSingle();
+        if (adminRow) {
+          isAdmin = true;
+          adminAlias = adminRow.alias || 'Admin';
+          isSuperadmin = !!adminRow.is_superadmin || adminRow.alias === 'mareenika';
+          whoAmI.style.display = 'inline';
+          whoAmI.textContent = isSuperadmin ? 'Superadmin' : 'Admin';
+          if (isSuperadmin) adminBack.style.display = 'block';
+          thActions.style.display = 'table-cell';
         }
       }
-    } catch {}
-
-    // Daten laden (Bewertungen + Katalog)
-    let apps = [];
-    let assessments = [];
-
-    async function loadPublicData(){
-      const [a1, a2] = await Promise.all([
-        supabase.from('v_app_catalog').select('*').order('name', { ascending: true }).limit(500),
-        supabase.from('v_assessments_public').select('*').order('created_at', { ascending:false }).limit(500)
-      ]);
-      if (a1.error) throw a1.error;
-      if (a2.error) throw a2.error;
-      apps = a1.data || [];
-      assessments = a2.data || [];
+    } catch {
+      // ignore
     }
 
-    function renderLatest(){
-      // jeweils neueste Bewertung je App
+    // ==== Daten laden (Bewertungen + Katalog) ====
+    let APPS = [];
+    let ASSESS = [];
+
+    try {
+      const [{ data: apps, error: appsErrRes },
+             { data: assessments, error: assessErrRes }] = await Promise.all([
+        supabase.from('v_app_catalog').select('*').order('name', { ascending:true }).limit(1000),
+        supabase.from('v_assessments_public').select('*').order('created_at', { ascending:false }).limit(500)
+      ]);
+      if (appsErrRes) throw appsErrRes;
+      if (assessErrRes) throw assessErrRes;
+      APPS = apps || [];
+      ASSESS = assessments || [];
+
+      // Neueste je App
       const latestByApp = new Map();
-      (assessments||[]).forEach(a => { if (!latestByApp.has(a.app_id)) latestByApp.set(a.app_id, a); });
+      ASSESS.forEach(a => { if (!latestByApp.has(a.app_id)) latestByApp.set(a.app_id, a); });
       const latestPerApp = Array.from(latestByApp.values())
         .sort((a,b)=> new Date(b.created_at)-new Date(a.created_at))
         .slice(0, 100);
@@ -224,13 +200,13 @@
         if (!list.length) { latestEmpty.style.display='block'; countEl.textContent='0 Einträge'; return; }
         latestEmpty.style.display='none';
         list.forEach(a => {
-          const app = (apps||[]).find(ap => ap.id===a.app_id) || {};
+          const app = APPS.find(ap => ap.id===a.app_id) || {};
           const el = document.createElement('div');
           el.className = 'card';
           el.innerHTML = `
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.25rem">
-              <div style="font-weight:600">${escape(app.name)||'Unbekannte App'}</div>
-              <span class="tag">${escape(app.category)||'–'}</span>
+              <div style="font-weight:600">${escapeHtml(app.name)||'Unbekannte App'}</div>
+              <span class="tag">${escapeHtml(app.category)||'–'}</span>
             </div>
             <div class="score" style="color:${gradeColor(a.grade)}">${Math.round(a.total_score||0)}%</div>
             <div class="grade" style="color:${gradeColor(a.grade)}">Note ${a.grade||'–'}</div>
@@ -240,44 +216,93 @@
         });
         countEl.textContent = `${list.length} Einträge`;
       }
-
       renderCards(latestPerApp);
 
-      // Suche
+      // Live-Suche (reagiert sofort ab 1. Buchstabe)
       searchInput.addEventListener('input', () => {
         const q = (searchInput.value||'').trim().toLowerCase();
-        const latestAll = Array.from(latestByApp.values());
-        if (!q) return renderCards(latestAll);
-        const filtered = latestAll.filter(a => {
-          const app = (apps||[]).find(ap => ap.id===a.app_id) || {};
+        if (!q) return renderCards(latestPerApp);
+        const filtered = latestPerApp.filter(a => {
+          const app = APPS.find(ap => ap.id===a.app_id) || {};
           return (app.name||'').toLowerCase().includes(q) || (app.category||'').toLowerCase().includes(q);
         });
         renderCards(filtered);
       });
+
+      // Katalog rendern (alphabetisch, bereits aus der Query)
+      renderCatalog();
+
+    } catch (err) {
+      latestErr.textContent = 'Fehler beim Laden: ' + (err?.message||err);
+      latestErr.style.display='block';
+      appsErr.textContent = 'Fehler beim Laden: ' + (err?.message||err);
+      appsErr.style.display='block';
     }
 
     function renderCatalog(){
       appsTbody.innerHTML = '';
-      if (!apps?.length) {
-        appsEmpty.style.display='block';
-        return;
-      }
+      if (!APPS.length){ appsEmpty.style.display='block'; return; }
       appsEmpty.style.display='none';
-      apps.forEach(a => {
+
+      APPS.forEach(a => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-          <td>${escape(a.name)}</td>
-          <td>${escape(a.version)||'–'}</td>
-          <td>${escape(a.category)||'–'}</td>
+          <td>${escapeHtml(a.name)}</td>
+          <td>${escapeHtml(a.version)||'–'}</td>
+          <td>${escapeHtml(a.category)||'–'}</td>
           <td style="color:${gradeColor(a.last_grade)}">${a.last_score!=null? Math.round(a.last_score)+'%':'–'}</td>
           <td style="color:${gradeColor(a.last_grade)}">${a.last_grade||'–'}</td>
           <td class="muted">${a.last_rated_at? fmtDate(a.last_rated_at) : '–'}</td>
+          <td ${isAdmin? '' : 'style="display:none"'} class="admin-actions">
+            <button class="btn" data-act="edit-app" data-id="${a.id}">Bearbeiten</button>
+            <button class="btn btn-danger" data-act="delete-app" data-id="${a.id}">Löschen</button>
+          </td>
         `;
         appsTbody.appendChild(tr);
       });
     }
 
-    // ===== Admin: Vorschläge laden + rendern (unten in der Datei ge-called) =====
+    // Admin: App bearbeiten/löschen
+    appsTbody.addEventListener('click', async (e) => {
+      const btn = e.target.closest('button[data-act]');
+      if (!btn) return;
+      if (!isAdmin) return alert('Nur Admins.');
+
+      const id = btn.dataset.id;
+      if (btn.dataset.act === 'edit-app') {
+        const { data: appRow, error } = await supabase.from('apps').select('*').eq('id', id).single();
+        if (error) return alert(error.message);
+        const name = prompt('App-Name:', appRow.name||'') ?? appRow.name;
+        const version = prompt('Version:', appRow.version||'') ?? appRow.version;
+        const category = prompt('Kategorie:', appRow.category||'') ?? appRow.category;
+        const upd = await supabase.from('apps').update({ name, version, category }).eq('id', id).select().single();
+        if (upd.error) return alert(upd.error.message);
+        // Lokale Liste aktualisieren
+        const idx = APPS.findIndex(x => x.id===id);
+        if (idx>=0) { APPS[idx] = { ...APPS[idx], name, version, category }; }
+        // Alphabetisch erneut sortieren
+        APPS.sort((x,y)=> (x.name||'').localeCompare(y.name||''));
+        renderCatalog();
+        alert('App gespeichert.');
+      }
+
+      if (btn.dataset.act === 'delete-app') {
+        if (!confirm('Diese App samt Bewertungen wirklich löschen?')) return;
+        const del = await supabase.from('apps').delete().eq('id', id);
+        if (del.error) return alert(del.error.message);
+        APPS = APPS.filter(x => x.id !== id);
+        renderCatalog();
+        alert('App gelöscht.');
+      }
+    });
+
+    // === Vorschläge ===
+    const canSuggest = () => {
+      const last = +localStorage.getItem('eazy:lastSuggestTs')||0;
+      return Date.now() - last > 30_000;
+    };
+    const markSuggest = () => localStorage.setItem('eazy:lastSuggestTs', String(Date.now()));
+
     async function loadSuggestions(){
       try{
         const { data, error } = await supabase
@@ -295,62 +320,45 @@
           const card = document.createElement('div');
           card.className = 'suggestion';
 
-          if (!isSuperadmin) {
-            // Gäste-Ansicht – mit Prozess-Status
+          if (!isAdmin) {
+            // Gäste-Ansicht
             card.innerHTML = `
               <div class="row" style="justify-content:space-between">
-                <div style="font-weight:600">${escape(s.app_name)}</div>
-                <div>
-                  <div class="label" style="text-align:right">Prozess-Status</div>
-                  <span class="tag">${escape(s.status || 'Neu')}</span>
-                </div>
+                <div style="font-weight:600">${escapeHtml(s.app_name)}</div>
+                <span class="tag">${escapeHtml(s.status || 'Neu')}</span>
               </div>
-              ${s.store_url ? `<div style="margin-top:.25rem"><a class="tag" href="${escape(s.store_url)}" target="_blank" rel="noopener">Store</a></div>`:''}
-              ${s.note ? `<div class="muted" style="margin-top:.25rem">${escape(s.note)}</div>`:''}
+              ${s.store_url ? `<div style="margin-top:.25rem"><a class="tag" href="${escapeHtml(s.store_url)}" target="_blank" rel="noopener">Store</a></div>`:''}
+              ${s.note ? `<div class="muted" style="margin-top:.25rem">${escapeHtml(s.note)}</div>`:''}
               <div class="muted" style="margin-top:.25rem">${fmtDate(s.created_at)}</div>
             `;
           } else {
-            // Superadmin – editierbar
+            // Admin/Superadmin – editierbar
             const id = s.id;
             card.innerHTML = `
-              <div class="row" style="width:100%;justify-content:space-between;align-items:flex-end">
-                <div style="flex:1;min-width:160px">
-                  <div class="label">App-Name</div>
-                  <input type="text" class="sa-name" placeholder="App-Name" value="${escape(s.app_name)}" style="width:100%">
-                </div>
-                <div style="min-width:220px">
-                  <div class="label">Prozess-Status</div>
-                  <select class="sa-status" style="width:100%">
-                    <option value="Neu"${(s.status||'Neu')==='Neu'?' selected':''}>Neu</option>
-                    <option value="In Bearbeitung"${s.status==='In Bearbeitung'?' selected':''}>In Bearbeitung</option>
-                    <option value="Fertig"${s.status==='Fertig'?' selected':''}>Fertig</option>
-                  </select>
-                </div>
+              <div class="row">
+                <input type="text" class="sa-name" placeholder="App-Name" value="${escapeHtml(s.app_name)}" style="flex:1;min-width:160px">
+                <select class="sa-status">
+                  <option value="Neu"${(s.status||'Neu')==='Neu'?' selected':''}>Neu</option>
+                  <option value="In Bearbeitung"${s.status==='In Bearbeitung'?' selected':''}>In Bearbeitung</option>
+                  <option value="Fertig"${s.status==='Fertig'?' selected':''}>Fertig</option>
+                </select>
               </div>
-
-              <div class="row" style="margin-top:.6rem; width:100%">
-                <div style="flex:1;min-width:200px">
-                  <div class="label">Store-Link</div>
-                  <input type="url" class="sa-url" placeholder="https://…" value="${escape(s.store_url||'')}" style="width:100%">
-                </div>
+              <div class="row" style="margin-top:.4rem">
+                <input type="url" class="sa-url" placeholder="Store-Link" value="${escapeHtml(s.store_url||'')}" style="flex:1;min-width:200px">
               </div>
-
-              <div class="row" style="margin-top:.6rem; width:100%">
-                <div style="flex:1">
-                  <div class="label">Notiz</div>
-                  <textarea class="sa-note" placeholder="Notiz" style="width:100%">${escape(s.note||'')}</textarea>
-                </div>
+              <div class="row" style="margin-top:.4rem">
+                <textarea class="sa-note" placeholder="Notiz" style="width:100%">${escapeHtml(s.note||'')}</textarea>
               </div>
-
-              <div class="row" style="margin-top:.6rem; width:100%; justify-content:space-between">
+              <div class="row" style="margin-top:.5rem;justify-content:space-between">
                 <div class="muted">${fmtDate(s.created_at)}</div>
-                <div class="btn-row actions">
+                <div class="admin-actions">
                   <button class="btn btn-primary sa-save">Speichern</button>
                   <button class="btn btn-danger sa-del">Löschen</button>
                 </div>
               </div>
             `;
 
+            // Events
             const $name = card.querySelector('.sa-name');
             const $url  = card.querySelector('.sa-url');
             const $note = card.querySelector('.sa-note');
@@ -359,6 +367,7 @@
             const $del  = card.querySelector('.sa-del');
 
             $save.addEventListener('click', async () => {
+              // Status IMMER mitsenden – sonst Default in DB könnte "Neu" sein
               const payload = {
                 app_name: $name.value.trim(),
                 store_url: $url.value.trim() || null,
@@ -366,21 +375,31 @@
                 status: $status.value
               };
               try{
-                const { error } = await supabase.from('app_suggestions').update(payload).eq('id', id);
+                const { error } = await supabase
+                  .from('app_suggestions')
+                  .update(payload)
+                  .eq('id', id);
                 if (error) throw error;
-                showToast('Änderungen gespeichert');
+                alert('Vorschlag gespeichert.');
                 await loadSuggestions();
-              }catch(err){ alert('Speichern fehlgeschlagen: ' + (err?.message||err)); }
+              }catch(err){
+                alert('Speichern fehlgeschlagen: ' + (err?.message||err));
+              }
             });
 
             $del.addEventListener('click', async () => {
               if (!confirm('Vorschlag wirklich löschen?')) return;
               try{
-                const { error } = await supabase.from('app_suggestions').delete().eq('id', id);
+                const { error } = await supabase
+                  .from('app_suggestions')
+                  .delete()
+                  .eq('id', id);
                 if (error) throw error;
-                showToast('Vorschlag gelöscht');
+                alert('Vorschlag gelöscht.');
                 await loadSuggestions();
-              }catch(err){ alert('Löschen fehlgeschlagen: ' + (err?.message||err)); }
+              }catch(err){
+                alert('Löschen fehlgeschlagen: ' + (err?.message||err));
+              }
             });
           }
 
@@ -391,6 +410,7 @@
         sErr.style.display='block';
       }
     }
+    await loadSuggestions();
 
     // Vorschlag senden (öffentlich)
     sForm.addEventListener('submit', async (e)=>{
@@ -402,137 +422,21 @@
       const note = sNote.value.trim();
 
       if (!name){ sMsg.textContent = 'Bitte einen App-Namen angeben.'; return; }
-      const last = +localStorage.getItem('eazy:lastSuggestTs')||0;
-      if (Date.now() - last <= 30_000){ sMsg.textContent = 'Bitte warte kurz, bevor du erneut sendest.'; return; }
+      if (!canSuggest()){ sMsg.textContent = 'Bitte warte kurz, bevor du erneut sendest.'; return; }
 
       try{
         const { error } = await supabase.from('app_suggestions')
           .insert({ app_name: name, store_url: url || null, note: note || null, status: 'Neu' });
         if (error) throw error;
 
-        localStorage.setItem('eazy:lastSuggestTs', String(Date.now()));
+        markSuggest();
         sForm.reset();
         sMsg.textContent = 'Danke! Vorschlag gesendet.';
-        showToast('Vorschlag übermittelt');
         await loadSuggestions();
       }catch(err){
         sMsg.textContent = 'Senden fehlgeschlagen: ' + (err?.message||err);
       }
     });
-
-    // ===== Admin: Apps & Bewertungen =====
-    const manageTbody = document.getElementById('manageTbody');
-    const manageEmpty = document.getElementById('manageEmpty');
-
-    async function loadManage(){
-      if (!isSuperadmin) return;
-      const { data: catalog, error } = await supabase
-        .from('v_app_catalog').select('*').order('name', { ascending: true }).limit(1000);
-      manageTbody.innerHTML = '';
-      if (error || !catalog?.length){ manageEmpty.style.display='block'; return; }
-      manageEmpty.style.display='none';
-
-      for (const row of catalog) {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td><strong>${escape(row.name||'')}</strong></td>
-          <td>${escape(row.version||'–')}</td>
-          <td>${escape(row.category||'–')}</td>
-          <td style="color:${gradeColor(row.last_grade||'F')}">${row.last_score!=null? Math.round(row.last_score)+'%':'–'}</td>
-          <td style="color:${gradeColor(row.last_grade||'F')}">${escape(row.last_grade||'–')}</td>
-          <td class="muted">${row.last_rated_at? fmtDate(row.last_rated_at) : '–'}</td>
-          <td class="btn-row actions">
-            <button class="btn" data-act="edit-app" data-id="${row.id}">Bearbeiten</button>
-            <button class="btn btn-danger" data-act="delete-app" data-id="${row.id}">Löschen</button>
-            <button class="btn" data-act="assess" data-id="${row.id}">Bewertungen…</button>
-          </td>
-        `;
-        manageTbody.appendChild(tr);
-      }
-    }
-
-    // Delegation
-    manageTbody.addEventListener('click', async (e) => {
-      const btn = e.target.closest('button[data-act]');
-      if (!btn) return;
-      const act = btn.dataset.act;
-      const appId = btn.dataset.id;
-
-      if (act === 'edit-app') {
-        await editApp(appId);
-        await loadManage();
-        await loadPublicData(); renderCatalog(); renderLatest();
-      }
-      if (act === 'delete-app') {
-        if (!confirm('Diese App samt Bewertungen wirklich löschen?')) return;
-        const del = await supabase.from('apps').delete().eq('id', appId);
-        if (del.error) return alert(del.error.message);
-        showToast('App gelöscht');
-        await loadManage();
-        await loadPublicData(); renderCatalog(); renderLatest();
-      }
-      if (act === 'assess') {
-        await manageAssessments(appId);
-        await loadManage();
-        await loadPublicData(); renderCatalog(); renderLatest();
-      }
-    });
-
-    async function editApp(appId) {
-      const { data: appRow, error } = await supabase.from('apps').select('*').eq('id', appId).single();
-      if (error) return alert(error.message);
-      const name = prompt('App-Name:', appRow.name||'') ?? appRow.name;
-      const version = prompt('Version:', appRow.version||'') ?? appRow.version;
-      const category = prompt('Kategorie:', appRow.category||'') ?? appRow.category;
-      const upd = await supabase.from('apps').update({ name, version, category }).eq('id', appId).select().single();
-      if (upd.error) return alert(upd.error.message);
-      showToast('App gespeichert');
-    }
-
-    async function manageAssessments(appId) {
-      const { data: rows, error } = await supabase
-        .from('assessments').select('id,total_score,grade,created_at').eq('app_id', appId).order('created_at',{ascending:false});
-      if (error) return alert(error.message);
-      if (!rows?.length) return alert('Keine Bewertungen vorhanden.');
-
-      const menu = rows.map((r,i)=> `${i+1}) ${fmtDate(r.created_at)} – ${Math.round(r.total_score)}% (Note ${r.grade})`).join('\n');
-      const pick = prompt(`Bewertung wählen (Nummer):\n${menu}\n\nAktionen:\n- OK: gewählte Bewertung bearbeiten\n- Abbrechen: nichts tun`);
-      const idx = (pick? parseInt(pick,10):NaN)-1;
-      if (!(idx>=0 && idx<rows.length)) return;
-
-      const row = rows[idx];
-      const newScore = prompt('Score in % (0-100):', Math.round(row.total_score)) ?? Math.round(row.total_score);
-      const newGrade = prompt('Note (A–F):', row.grade||'F') ?? row.grade;
-      if (newScore === null || newGrade === null) return;
-      if (!/^[A-F]$/.test(String(newGrade).toUpperCase())) return alert('Ungültige Note (A–F).');
-
-      const upd = await supabase.from('assessments')
-        .update({ total_score: Math.max(0, Math.min(100, Number(newScore))), grade: String(newGrade).toUpperCase() })
-        .eq('id', row.id);
-      if (upd.error) return alert(upd.error.message);
-
-      if (confirm('Diese Bewertung löschen? (Abbrechen = nicht löschen)')) {
-        const del = await supabase.from('assessments').delete().eq('id', row.id);
-        if (del.error) return alert(del.error.message);
-        showToast('Bewertung gelöscht');
-      } else {
-        showToast('Bewertung gespeichert');
-      }
-    }
-
-    // Initial load & render
-    try {
-      await loadPublicData();
-      renderCatalog();
-      renderLatest();
-      await loadSuggestions();
-      await loadManage(); // nur wenn superadmin sichtbar
-    } catch (err) {
-      latestErr.textContent = 'Fehler beim Laden: ' + (err?.message||err);
-      latestErr.style.display='block';
-      appsErr.textContent = 'Fehler beim Laden: ' + (err?.message||err);
-      appsErr.style.display='block';
-    }
   </script>
 </body>
 </html>
