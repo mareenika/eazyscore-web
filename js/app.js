@@ -39,6 +39,7 @@ const QUESTIONS = [
   "37. Lokalisierung (Tracking) kann deaktiviert werden?"
 ];
 
+// === DOM-Refs ===
 const formEl = document.getElementById('auditForm');
 const questionsWrap = document.getElementById('questions');
 const resultSection = document.getElementById('resultSection');
@@ -56,16 +57,17 @@ const shortFindings = document.getElementById('shortFindings');
 
 const restartBtn = document.getElementById('restartBtn');
 
-// Fragen ins Formular rendern
+// === Fragen ins Formular rendern (mit zugänglichen Labels) ===
 function renderQuestions() {
   questionsWrap.innerHTML = '';
   QUESTIONS.forEach((label, idx) => {
+    const qId = `q${idx+1}`;
     const row = document.createElement('div');
     row.className = 'question';
     row.innerHTML = `
-      <span class="inline-label">${label}</span>
+      <label class="inline-label" for="${qId}">${label}</label>
       <span class="inline-field">
-        <select name="q${idx+1}" required>
+        <select id="${qId}" name="${qId}" required>
           <option value="" disabled selected>-- bitte auswählen --</option>
           <option value="YES">Ja</option>
           <option value="NO">Nein</option>
@@ -78,7 +80,7 @@ function renderQuestions() {
 }
 renderQuestions();
 
-// Bewertung berechnen (E ab 50%, <50% = F)
+// === Scoring / Noten ===
 function gradeFromScore(score) {
   if (score >= 90) return 'A';
   if (score >= 80) return 'B';
@@ -88,7 +90,6 @@ function gradeFromScore(score) {
   return 'F';
 }
 
-// Klasse für Farbbadges/-balken setzen
 function setGradeClass(el, grade) {
   el.classList.remove('grade-A','grade-B','grade-C','grade-D','grade-E','grade-F');
   el.classList.add(`grade-${grade}`);
@@ -106,9 +107,66 @@ function buildShortFindings(answersMap) {
   return rows.map(t => `<div>• ${t}</div>`).join('');
 }
 
-// Submit
+// Antworten einsammeln (auch für Live-Vorschau)
+function collectAnswers() {
+  const answers = {};
+  let yesCount = 0;
+  QUESTIONS.forEach((_, i) => {
+    const key = `q${i+1}`;
+    const el = formEl.elements[key];
+    const val = el ? (el.value || '') : '';
+    answers[key] = val;
+    if (val === 'YES') yesCount += 1;
+  });
+  return { answers, yesCount };
+}
+
+// Live-Vorschau von Score/Note/Fortschritt
+function paintLivePreview() {
+  const total = QUESTIONS.length;
+  const { answers, yesCount } = collectAnswers();
+  const score = Math.round((yesCount * 100) / total);
+  const grade = gradeFromScore(score);
+
+  scoreValueEl.textContent = `${score}%`;
+  correctMetaEl.textContent = `${yesCount} von ${total} richtigen Antworten`;
+  gradeBadgeEl.textContent = grade;
+  setGradeClass(gradeBadgeEl, grade);
+
+  progressBarEl.style.width = `${score}%`;
+  progressTextEl.textContent = `${yesCount}/${total}`;
+  setGradeClass(progressBarEl, grade);
+
+  // Live-Kurzbefunde schon beim Ausfüllen
+  shortFindings.innerHTML = buildShortFindings(answers);
+}
+
+// Bei jeder Änderung im Fragenbereich: Vorschau aktualisieren
+questionsWrap.addEventListener('change', paintLivePreview);
+
+// === Submit ===
 formEl.addEventListener('submit', (e) => {
   e.preventDefault();
+
+  // Validierung App-Name (muss vorhanden sein)
+  const appNameRaw = (formEl.elements['appName']?.value || '').trim();
+  if (!appNameRaw) {
+    alert('Bitte einen App-Namen angeben.');
+    formEl.elements['appName']?.focus();
+    return;
+  }
+
+  // Validierung: Alle Fragen beantwortet?
+  for (let i = 0; i < QUESTIONS.length; i++) {
+    const key = `q${i+1}`;
+    const el = formEl.elements[key];
+    if (!el || !el.value) {
+      alert(`Bitte Frage ${i+1} beantworten.`);
+      el?.focus();
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+  }
 
   // Antworten einsammeln
   const formData = new FormData(formEl);
@@ -144,7 +202,7 @@ formEl.addEventListener('submit', (e) => {
   // Persistenz-Hook → index.html speichert via Supabase
   document.dispatchEvent(new CustomEvent('eazy:result', {
     detail: {
-      answers,                // z.B. { q1: "YES", q2: "NO", ... }
+      answers,                // { q1:"YES", q2:"NO", ... }
       score,                  // Prozent (0..100)
       grade,                  // "A".."F"
       meta: {
@@ -161,11 +219,31 @@ formEl.addEventListener('submit', (e) => {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 });
 
-// Neu bewerten
-restartBtn.addEventListener('click', () => {
+// === „Neu bewerten“ (alles sauber zurücksetzen) ===
+function resetAll() {
   formEl.reset();
-  renderQuestions();
+  renderQuestions();              // neue <select>s mit required & Defaults
+  // Fortschritt/Ergebnis-UI zurücksetzen
+  const total = QUESTIONS.length;
+  scoreValueEl.textContent = `0%`;
+  correctMetaEl.textContent = `0 von ${total} richtigen Antworten`;
+  gradeBadgeEl.textContent = 'F';
+  setGradeClass(gradeBadgeEl, 'F');
+  progressBarEl.style.width = '0%';
+  progressTextEl.textContent = `0/${total}`;
+  setGradeClass(progressBarEl, 'F');
+  rAppName.textContent = '–';
+  rVersion.textContent = '–';
+  rCategory.textContent = '–';
+  shortFindings.innerHTML = '';
+}
+
+restartBtn.addEventListener('click', () => {
+  resetAll();
   resultSection.classList.add('hidden');
   formEl.classList.remove('hidden');
   window.scrollTo({ top: 0, behavior: 'smooth' });
 });
+
+// Initial einmal eine „0%-Vorschau“ zeigen
+paintLivePreview();
