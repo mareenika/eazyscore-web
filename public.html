@@ -23,15 +23,37 @@
     textarea{min-height:84px;width:100%}
     .empty{padding:1rem;border:1px dashed #ddd;border-radius:12px;color:#6b7280;background:#fff}
     .error{padding:.75rem;border:1px solid #fca5a5;background:#fef2f2;color:#7f1d1d;border-radius:8px}
-    .btn{padding:.45rem .8rem;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer}
+
+    /* Buttons – Grundstil */
+    .btn{
+      display:inline-flex;align-items:center;justify-content:center;
+      padding:.48rem 1rem;border:1px solid #ddd;border-radius:10px;
+      background:#fff;cursor:pointer;font-size:.95rem;line-height:1;gap:.4rem;
+      min-height:38px; /* gleiche Höhe */
+      min-width:130px; /* gleiche Breite als Basis */
+      text-align:center; white-space:nowrap;
+    }
+    .btn:hover{background:#f9fafb}
     .btn-primary{background:#111827;color:#fff;border-color:#111827}
+    .btn-primary:hover{filter:brightness(1.08)}
     .btn-danger{background:#991b1b;color:#fff;border-color:#991b1b}
+    .btn-danger:hover{filter:brightness(1.04)}
+
+    /* In den Admin-Action-Reihen: Buttons exakt gleich groß */
+    .admin-actions{display:flex;gap:.5rem;justify-content:flex-end}
+    .admin-actions .btn{min-width:140px} /* Speichern & Löschen gleich breit */
+
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    @media (max-width:720px){.grid{grid-template-columns:1fr}}
+    @media (max-width:720px){
+      .grid{grid-template-columns:1fr}
+      .btn{min-width:unset;width:100%} /* mobile: Buttons füllen Zeile */
+      .admin-actions{justify-content:stretch}
+      .admin-actions .btn{flex:1}
+    }
+
     .section{margin-top:1.25rem}
     .suggestion{border:1px solid #e5e7eb;border-radius:10px;padding:.6rem;background:#fff}
     .row{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
-    .admin-actions{display:flex;gap:.4rem;justify-content:flex-end}
   </style>
 </head>
 <body>
@@ -149,7 +171,6 @@
     // ==== Admin-Erkennung ====
     let isAdmin = false;
     let isSuperadmin = false;
-    let adminAlias = null;
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -161,7 +182,6 @@
           .maybeSingle();
         if (adminRow) {
           isAdmin = true;
-          adminAlias = adminRow.alias || 'Admin';
           isSuperadmin = !!adminRow.is_superadmin || adminRow.alias === 'mareenika';
           whoAmI.style.display = 'inline';
           whoAmI.textContent = isSuperadmin ? 'Superadmin' : 'Admin';
@@ -169,9 +189,7 @@
           thActions.style.display = 'table-cell';
         }
       }
-    } catch {
-      // ignore
-    }
+    } catch {}
 
     // ==== Daten laden (Bewertungen + Katalog) ====
     let APPS = [];
@@ -218,7 +236,7 @@
       }
       renderCards(latestPerApp);
 
-      // Live-Suche (reagiert sofort ab 1. Buchstabe)
+      // Live-Suche
       searchInput.addEventListener('input', () => {
         const q = (searchInput.value||'').trim().toLowerCase();
         if (!q) return renderCards(latestPerApp);
@@ -229,9 +247,7 @@
         renderCards(filtered);
       });
 
-      // Katalog rendern (alphabetisch, bereits aus der Query)
       renderCatalog();
-
     } catch (err) {
       latestErr.textContent = 'Fehler beim Laden: ' + (err?.message||err);
       latestErr.style.display='block';
@@ -277,10 +293,8 @@
         const category = prompt('Kategorie:', appRow.category||'') ?? appRow.category;
         const upd = await supabase.from('apps').update({ name, version, category }).eq('id', id).select().single();
         if (upd.error) return alert(upd.error.message);
-        // Lokale Liste aktualisieren
         const idx = APPS.findIndex(x => x.id===id);
         if (idx>=0) { APPS[idx] = { ...APPS[idx], name, version, category }; }
-        // Alphabetisch erneut sortieren
         APPS.sort((x,y)=> (x.name||'').localeCompare(y.name||''));
         renderCatalog();
         alert('App gespeichert.');
@@ -367,7 +381,6 @@
             const $del  = card.querySelector('.sa-del');
 
             $save.addEventListener('click', async () => {
-              // Status IMMER mitsenden – sonst Default in DB könnte "Neu" sein
               const payload = {
                 app_name: $name.value.trim(),
                 store_url: $url.value.trim() || null,
@@ -413,6 +426,9 @@
     await loadSuggestions();
 
     // Vorschlag senden (öffentlich)
+    function canSuggest(){ const last=+localStorage.getItem('eazy:lastSuggestTs')||0; return Date.now()-last>30_000; }
+    function markSuggest(){ localStorage.setItem('eazy:lastSuggestTs', String(Date.now())); }
+
     sForm.addEventListener('submit', async (e)=>{
       e.preventDefault();
       sMsg.textContent = '';
