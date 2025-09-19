@@ -1,1 +1,450 @@
-<!doctype html> <html lang="de"> <head> <meta charset="utf-8"> <title>EAZY Score – Öffentliche Übersicht</title> <meta name="viewport" content="width=device-width, initial-scale=1"> <link href="./css/style.css" rel="stylesheet"> <style> body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial} .wrap{max-width:1000px;margin:0 auto;padding:1rem} header{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap} .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-top:12px} .card{border:1px solid #e5e7eb;border-radius:12px;padding:12px;background:#fff} .muted{color:#6b7280} .tag{display:inline-block;padding:.1rem .5rem;border-radius:999px;border:1px solid #e5e7eb;font-size:.8rem} .score{font-size:1.6rem;font-weight:700} .grade{font-weight:700} .table{width:100%;border-collapse:collapse;margin-top:8px;background:#fff;border-radius:12px;overflow:hidden} .table th,.table td{padding:.6rem;border-bottom:1px solid #eee;text-align:left} .table th{background:#f8fafc} .toolbar{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin:.5rem 0} input[type="search"], input[type="url"], input[type="text"], textarea, select{padding:.5rem;border:1px solid #ccc;border-radius:8px;min-width:220px} textarea{min-height:84px;width:100%} .empty{padding:1rem;border:1px dashed #ddd;border-radius:12px;color:#6b7280;background:#fff} .error{padding:.75rem;border:1px solid #fca5a5;background:#fef2f2;color:#7f1d1d;border-radius:8px} .btn{padding:.45rem .8rem;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer} .btn-primary{background:#111827;color:#fff;border-color:#111827} .btn-danger{background:#991b1b;color:#fff;border-color:#991b1b} .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px} @media (max-width:720px){.grid{grid-template-columns:1fr}} .section{margin-top:1.25rem} .suggestion{border:1px solid #e5e7eb;border-radius:10px;padding:.6rem;background:#fff} .row{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap} </style> </head> <body> <div class="wrap"> <header> <h1>EAZY Score – Öffentliche Übersicht</h1> <nav> <a class="tag" href="./index.html">→ Admin / Login</a> </nav> </header> <!-- Zurück-Button nur für Superadmin --> <div id="adminBack" style="display:none; margin:1rem 0;"> <button class="btn btn-primary" onclick="location.href='./index.html'">← Zurück zur Bewertung</button> </div> <section id="latest"> <h2>Letzte Bewertungen</h2> <div class="toolbar"> <input id="search" type="search" placeholder="App suchen…"> <span id="count" class="muted"></span> </div> <div id="cards" class="cards"></div> <div id="latestEmpty" class="empty" style="display:none">Noch keine Bewertungen vorhanden.</div> <div id="latestErr" class="error" style="display:none"></div> </section> <section id="apps" class="section"> <h2>Apps (Katalog)</h2> <table class="table" id="appsTable"> <thead> <tr> <th>App</th> <th>Version</th> <th>Kategorie</th> <th>Prozent</th> <th>Note</th> <th class="muted">Zuletzt bewertet</th> </tr> </thead> <tbody id="appsTbody"></tbody> </table> <div id="appsEmpty" class="empty" style="display:none">Noch keine Apps im Katalog.</div> <div id="appsErr" class="error" style="display:none"></div> </section> <!-- Öffentliche Vorschlagsbox --> <section id="suggest" class="section"> <h2>App vorschlagen</h2> <p class="muted" style="margin:.25rem 0 .75rem"> Schlage eine App vor, die wir bewerten sollen. (Kein Login nötig) </p> <form id="suggestForm" class="grid" novalidate> <div> <label for="sName">App-Name *</label><br> <input id="sName" type="text" placeholder="z. B. WhatsApp" required style="width:100%"> </div> <div> <label for="sUrl">Store-Link (optional)</label><br> <input id="sUrl" type="url" placeholder="https://apps.apple.com/..." style="width:100%"> </div> <div style="grid-column:1/-1"> <label for="sNote">Notiz (optional)</label><br> <textarea id="sNote" placeholder="Warum soll die App geprüft werden?"></textarea> </div> <div style="grid-column:1/-1;display:flex;gap:.5rem;align-items:center"> <button class="btn btn-primary" type="submit">Vorschlag senden</button> <span id="sMsg" class="muted"></span> </div> </form> <h3 style="margin-top:1rem">Zuletzt vorgeschlagen</h3> <div id="sList" class="cards"></div> <div id="sEmpty" class="empty" style="display:none">Noch keine Vorschläge eingegangen.</div> <div id="sErr" class="error" style="display:none"></div> </section> </div> <script type="module"> import { createClient } from "https://esm.sh/@supabase/supabase-js"; const supabase = createClient( "https://lhdztkfvrnsqfnbqybfq.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxoZHp0a2Z2cm5zcWZuYnF5YmZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTczMjIxMjMsImV4cCI6MjA3Mjg5ODEyM30.81BVX5zf_WxE3RdTw32OttwsiMgDanXdNIkWeug-jUs" ); const cards = document.getElementById('cards'); const searchInput = document.getElementById('search'); const countEl = document.getElementById('count'); const latestEmpty = document.getElementById('latestEmpty'); const latestErr = document.getElementById('latestErr'); const appsTbody = document.getElementById('appsTbody'); const appsEmpty = document.getElementById('appsEmpty'); const appsErr = document.getElementById('appsErr'); const adminBack = document.getElementById('adminBack'); // Suggest UI const sForm = document.getElementById('suggestForm'); const sName = document.getElementById('sName'); const sUrl = document.getElementById('sUrl'); const sNote = document.getElementById('sNote'); const sMsg = document.getElementById('sMsg'); const sList = document.getElementById('sList'); const sEmpty= document.getElementById('sEmpty'); const sErr = document.getElementById('sErr'); const fmtDate = iso => new Date(iso).toLocaleString('de-DE', { dateStyle:'medium', timeStyle:'short' }); const escape = s => (s||'').replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); const gradeColor = g => ({A:'#16a34a',B:'#22c55e',C:'#84cc16',D:'#eab308',E:'#f59e0b',F:'#ef4444'}[g] || '#6b7280'); // Superadmin-Back-Button let isSuperadmin = false; try { const { data: { session } } = await supabase.auth.getSession(); if (session?.user) { const { data: admin } = await supabase .from('admins').select('alias, is_superadmin').eq('user_id', session.user.id).maybeSingle(); if (admin?.alias === 'mareenika' || admin?.is_superadmin) { isSuperadmin = true; adminBack.style.display = 'block'; } } } catch {} // Daten laden (Bewertungen + Katalog) try { const [{ data: apps, error: appsErrRes }, { data: assessments, error: assessErrRes }] = await Promise.all([ supabase.from('v_app_catalog').select('*').limit(500), supabase.from('v_assessments_public').select('*').order('created_at', { ascending:false }).limit(500) ]); if (appsErrRes) throw appsErrRes; if (assessErrRes) throw assessErrRes; // Neueste je App const latestByApp = new Map(); (assessments||[]).forEach(a => { if (!latestByApp.has(a.app_id)) latestByApp.set(a.app_id, a); }); const latestPerApp = Array.from(latestByApp.values()) .sort((a,b)=> new Date(b.created_at)-new Date(a.created_at)) .slice(0, 100); function renderCards(list){ cards.innerHTML = ''; if (!list.length) { latestEmpty.style.display='block'; countEl.textContent='0 Einträge'; return; } latestEmpty.style.display='none'; list.forEach(a => { const app = (apps||[]).find(ap => ap.id===a.app_id) || {}; const el = document.createElement('div'); el.className = 'card'; el.innerHTML = <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.25rem"> <div style="font-weight:600">${escape(app.name)||'Unbekannte App'}</div> <span class="tag">${escape(app.category)||'–'}</span> </div> <div class="score" style="color:${gradeColor(a.grade)}">${Math.round(a.total_score||0)}%</div> <div class="grade" style="color:${gradeColor(a.grade)}">Note ${a.grade||'–'}</div> <div class="muted">${fmtDate(a.created_at)}</div> ; cards.appendChild(el); }); countEl.textContent = ${list.length} Einträge; } renderCards(latestPerApp); // Suche searchInput.addEventListener('input', () => { const q = (searchInput.value||'').trim().toLowerCase(); if (!q) return renderCards(latestPerApp); const filtered = latestPerApp.filter(a => { const app = (apps||[]).find(ap => ap.id===a.app_id) || {}; return (app.name||'').toLowerCase().includes(q) || (app.category||'').toLowerCase().includes(q); }); renderCards(filtered); }); // Katalog appsTbody.innerHTML = ''; if (!apps?.length) { appsEmpty.style.display='block'; } else { appsEmpty.style.display='none'; apps.forEach(a => { const tr = document.createElement('tr'); tr.innerHTML = <td>${escape(a.name)}</td> <td>${escape(a.version)||'–'}</td> <td>${escape(a.category)||'–'}</td> <td style="color:${gradeColor(a.last_grade)}">${a.last_score!=null? Math.round(a.last_score)+'%':'–'}</td> <td style="color:${gradeColor(a.last_grade)}">${a.last_grade||'–'}</td> <td class="muted">${a.last_rated_at? fmtDate(a.last_rated_at) : '–'}</td> ; appsTbody.appendChild(tr); }); } } catch (err) { latestErr.textContent = 'Fehler beim Laden: ' + (err?.message||err); latestErr.style.display='block'; appsErr.textContent = 'Fehler beim Laden: ' + (err?.message||err); appsErr.style.display='block'; } // === Vorschläge === // Rate-Limit clientseitig: 1 Vorschlag / 30 Sekunden const canSuggest = () => { const last = +localStorage.getItem('eazy:lastSuggestTs')||0; return Date.now() - last > 30_000; }; const markSuggest = () => localStorage.setItem('eazy:lastSuggestTs', String(Date.now())); async function loadSuggestions(){ try{ const { data, error } = await supabase .from('app_suggestions') .select('id, app_name, store_url, note, status, created_at') .order('created_at',{ascending:false}) .limit(20); if (error) throw error; sList.innerHTML = ''; if (!data?.length){ sEmpty.style.display='block'; return; } sEmpty.style.display='none'; data.forEach(s => { const card = document.createElement('div'); card.className = 'suggestion'; if (!isSuperadmin) { // Gäste-Ansicht card.innerHTML = <div class="row" style="justify-content:space-between"> <div style="font-weight:600">${escape(s.app_name)}</div> <span class="tag">${escape(s.status || 'Neu')}</span> </div> ${s.store_url ? <div style="margin-top:.25rem"><a class="tag" href="${escape(s.store_url)}" target="_blank" rel="noopener">Store</a></div>:''} ${s.note ? <div class="muted" style="margin-top:.25rem">${escape(s.note)}</div>:''} <div class="muted" style="margin-top:.25rem">${fmtDate(s.created_at)}</div> ; } else { // Superadmin: editierbar const id = s.id; card.innerHTML = <div class="row"> <input type="text" class="sa-name" placeholder="App-Name" value="${escape(s.app_name)}" style="flex:1;min-width:160px"> <select class="sa-status"> <option value="Neu"${(s.status||'Neu')==='Neu'?' selected':''}>Neu</option> <option value="In Bearbeitung"${s.status==='In Bearbeitung'?' selected':''}>In Bearbeitung</option> <option value="Fertig"${s.status==='Fertig'?' selected':''}>Fertig</option> </select> </div> <div class="row" style="margin-top:.4rem"> <input type="url" class="sa-url" placeholder="Store-Link" value="${escape(s.store_url||'')}" style="flex:1;min-width:200px"> </div> <div class="row" style="margin-top:.4rem"> <textarea class="sa-note" placeholder="Notiz" style="width:100%">${escape(s.note||'')}</textarea> </div> <div class="row" style="margin-top:.5rem;justify-content:space-between"> <div class="muted">${fmtDate(s.created_at)}</div> <div class="row"> <button class="btn btn-primary sa-save">Speichern</button> <button class="btn btn-danger sa-del">Löschen</button> </div> </div> ; // Events const $name = card.querySelector('.sa-name'); const $url = card.querySelector('.sa-url'); const $note = card.querySelector('.sa-note'); const $status = card.querySelector('.sa-status'); const $save = card.querySelector('.sa-save'); const $del = card.querySelector('.sa-del'); $save.addEventListener('click', async () => { // WICHTIG: status IMMER mitsenden const payload = { app_name: $name.value.trim(), store_url: $url.value.trim() || null, note: $note.value.trim() || null, status: $status.value // <-- entscheidend, sonst fällt DB evtl. auf Default "Neu" zurück }; try{ const { error } = await supabase .from('app_suggestions') .update(payload) .eq('id', id); if (error) throw error; await loadSuggestions(); }catch(err){ alert('Speichern fehlgeschlagen: ' + (err?.message||err)); } }); $del.addEventListener('click', async () => { if (!confirm('Vorschlag wirklich löschen?')) return; try{ const { error } = await supabase .from('app_suggestions') .delete() .eq('id', id); if (error) throw error; await loadSuggestions(); }catch(err){ alert('Löschen fehlgeschlagen: ' + (err?.message||err)); } }); } sList.appendChild(card); }); }catch(err){ sErr.textContent = 'Fehler beim Laden der Vorschläge: ' + (err?.message||err); sErr.style.display='block'; } } await loadSuggestions(); // Vorschlag senden (öffentlich) sForm.addEventListener('submit', async (e)=>{ e.preventDefault(); sMsg.textContent = ''; const name = sName.value.trim(); const url = sUrl.value.trim(); const note = sNote.value.trim(); if (!name){ sMsg.textContent = 'Bitte einen App-Namen angeben.'; return; } const last = +localStorage.getItem('eazy:lastSuggestTs')||0; if (Date.now() - last <= 30_000){ sMsg.textContent = 'Bitte warte kurz, bevor du erneut sendest.'; return; } try{ // Neue Vorschläge standardmäßig Status "Neu" const { error } = await supabase.from('app_suggestions') .insert({ app_name: name, store_url: url || null, note: note || null, status: 'Neu' }); if (error) throw error; localStorage.setItem('eazy:lastSuggestTs', String(Date.now())); sForm.reset(); sMsg.textContent = 'Danke! Vorschlag gesendet.'; await loadSuggestions(); }catch(err){ sMsg.textContent = 'Senden fehlgeschlagen: ' + (err?.message||err); } }); </script> </body> </html>
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>EAZY Score – Öffentliche Übersicht</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="./css/style.css" rel="stylesheet">
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial}
+    .wrap{max-width:1000px;margin:0 auto;padding:1rem}
+    header{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap}
+    .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-top:12px}
+    .card{border:1px solid #e5e7eb;border-radius:12px;padding:12px;background:#fff}
+    .muted{color:#6b7280}
+    .tag{display:inline-block;padding:.1rem .5rem;border-radius:999px;border:1px solid #e5e7eb;font-size:.8rem}
+    .score{font-size:1.6rem;font-weight:700}
+    .grade{font-weight:700}
+    .table{width:100%;border-collapse:collapse;margin-top:8px;background:#fff;border-radius:12px;overflow:hidden}
+    .table th,.table td{padding:.6rem;border-bottom:1px solid #eee;text-align:left;vertical-align:middle}
+    .table th{background:#f8fafc}
+    .toolbar{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin:.5rem 0}
+    input[type="search"], input[type="url"], input[type="text"], textarea, select{padding:.5rem;border:1px solid #ccc;border-radius:8px;min-width:220px}
+    textarea{min-height:84px;width:100%}
+    .empty{padding:1rem;border:1px dashed #ddd;border-radius:12px;color:#6b7280;background:#fff}
+    .error{padding:.75rem;border:1px solid #fca5a5;background:#fef2f2;color:#7f1d1d;border-radius:8px}
+
+    /* Buttons */
+    .btn{padding:.45rem .8rem;border:1px solid #ddd;border-radius:8px;background:#fff;cursor:pointer;text-align:center;line-height:1.2}
+    .btn-primary{background:#111827;color:#fff;border-color:#111827}
+    .btn-danger{background:#991b1b;color:#fff;border-color:#991b1b}
+
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    @media (max-width:720px){.grid{grid-template-columns:1fr}}
+    .section{margin-top:1.25rem}
+    .suggestion{border:1px solid #e5e7eb;border-radius:10px;padding:.6rem;background:#fff}
+    .row{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
+
+    /* Gleich breite Admin-Aktionsbuttons (Speichern/Löschen) */
+    .admin-actions{display:flex;gap:.5rem;justify-content:flex-end}
+    .admin-actions .btn{
+      flex:1 1 140px;      /* gleiche Breite erzwingen */
+      min-width:140px;
+      max-width:160px;
+      padding:.55rem .8rem; /* gleiche Höhe */
+      font-size:.95rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>EAZY Score – Öffentliche Übersicht</h1>
+      <nav class="row">
+        <a class="tag" href="./index.html">→ Admin / Login</a>
+        <span id="whoAmI" class="muted" style="display:none"></span>
+      </nav>
+    </header>
+
+    <!-- Zurück-Button nur für Superadmin -->
+    <div id="adminBack" style="display:none; margin:1rem 0;">
+      <button class="btn btn-primary" onclick="location.href='./index.html'">← Zurück zur Bewertung</button>
+    </div>
+
+    <section id="latest">
+      <h2>Letzte Bewertungen</h2>
+      <div class="toolbar">
+        <input id="search" type="search" placeholder="App suchen…">
+        <span id="count" class="muted"></span>
+      </div>
+      <div id="cards" class="cards"></div>
+      <div id="latestEmpty" class="empty" style="display:none">Noch keine Bewertungen vorhanden.</div>
+      <div id="latestErr" class="error" style="display:none"></div>
+    </section>
+
+    <section id="apps" class="section">
+      <h2>Apps (Katalog)</h2>
+      <table class="table" id="appsTable">
+        <thead>
+          <tr>
+            <th>App</th>
+            <th>Version</th>
+            <th>Kategorie</th>
+            <th>Prozent</th>
+            <th>Note</th>
+            <th class="muted">Zuletzt bewertet</th>
+            <th id="thActions" style="display:none">Aktionen</th>
+          </tr>
+        </thead>
+        <tbody id="appsTbody"></tbody>
+      </table>
+      <div id="appsEmpty" class="empty" style="display:none">Noch keine Apps im Katalog.</div>
+      <div id="appsErr" class="error" style="display:none"></div>
+    </section>
+
+    <!-- Öffentliche Vorschlagsbox -->
+    <section id="suggest" class="section">
+      <h2>App vorschlagen</h2>
+      <p class="muted" style="margin:.25rem 0 .75rem">
+        Schlage eine App vor, die wir bewerten sollen. (Kein Login nötig)
+      </p>
+      <form id="suggestForm" class="grid" novalidate>
+        <div>
+          <label for="sName">App-Name *</label><br>
+          <input id="sName" type="text" placeholder="z. B. WhatsApp" required style="width:100%">
+        </div>
+        <div>
+          <label for="sUrl">Store-Link (optional)</label><br>
+          <input id="sUrl" type="url" placeholder="https://apps.apple.com/..." style="width:100%">
+        </div>
+        <div style="grid-column:1/-1">
+          <label for="sNote">Notiz (optional)</label><br>
+          <textarea id="sNote" placeholder="Warum soll die App geprüft werden?"></textarea>
+        </div>
+        <div style="grid-column:1/-1;display:flex;gap:.5rem;align-items:center">
+          <button class="btn btn-primary" type="submit">Vorschlag senden</button>
+          <span id="sMsg" class="muted"></span>
+        </div>
+      </form>
+
+      <h3 style="margin-top:1rem">Zuletzt vorgeschlagen</h3>
+      <div id="sList" class="cards"></div>
+      <div id="sEmpty" class="empty" style="display:none">Noch keine Vorschläge eingegangen.</div>
+      <div id="sErr" class="error" style="display:none"></div>
+    </section>
+  </div>
+
+  <script type="module">
+    import { createClient } from "https://esm.sh/@supabase/supabase-js";
+
+    const supabase = createClient(
+      "https://lhdztkfvrnsqfnbqybfq.supabase.co",
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxoZHp0a2Z2cm5zcWZuYnF5YmZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTczMjIxMjMsImV4cCI6MjA3Mjg5ODEyM30.81BVX5zf_WxE3RdTw32OttwsiMgDanXdNIkWeug-jUs"
+    );
+
+    const cards = document.getElementById('cards');
+    const searchInput = document.getElementById('search');
+    const countEl = document.getElementById('count');
+    const latestEmpty = document.getElementById('latestEmpty');
+    const latestErr = document.getElementById('latestErr');
+    const appsTbody = document.getElementById('appsTbody');
+    const appsEmpty = document.getElementById('appsEmpty');
+    const appsErr = document.getElementById('appsErr');
+    const adminBack = document.getElementById('adminBack');
+    const whoAmI = document.getElementById('whoAmI');
+    const thActions = document.getElementById('thActions');
+
+    // Suggest UI
+    const sForm = document.getElementById('suggestForm');
+    const sName = document.getElementById('sName');
+    const sUrl  = document.getElementById('sUrl');
+    const sNote = document.getElementById('sNote');
+    const sMsg  = document.getElementById('sMsg');
+    const sList = document.getElementById('sList');
+    const sEmpty= document.getElementById('sEmpty');
+    const sErr  = document.getElementById('sErr');
+
+    const fmtDate = iso => new Date(iso).toLocaleString('de-DE', { dateStyle:'medium', timeStyle:'short' });
+    const escapeHtml = s => (s||'').replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+    const gradeColor = g => ({A:'#16a34a',B:'#22c55e',C:'#84cc16',D:'#eab308',E:'#f59e0b',F:'#ef4444'}[g] || '#6b7280');
+
+    // ==== Admin-Erkennung ====
+    let isAdmin = false;
+    let isSuperadmin = false;
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const { data: adminRow } = await supabase
+          .from('admins')
+          .select('alias, is_superadmin')
+          .eq('user_id', session.user.id)
+          .maybeSingle();
+        if (adminRow) {
+          isAdmin = true;
+          isSuperadmin = !!adminRow.is_superadmin || adminRow.alias === 'mareenika';
+          whoAmI.style.display = 'inline';
+          whoAmI.textContent = isSuperadmin ? 'Superadmin' : 'Admin';
+          if (isSuperadmin) adminBack.style.display = 'block';
+          thActions.style.display = 'table-cell';
+        }
+      }
+    } catch { /* ignore */ }
+
+    // ==== Daten laden (Bewertungen + Katalog) ====
+    let APPS = [];
+    let ASSESS = [];
+
+    try {
+      const [{ data: apps, error: appsErrRes },
+             { data: assessments, error: assessErrRes }] = await Promise.all([
+        supabase.from('v_app_catalog').select('*').order('name', { ascending:true }).limit(1000),
+        supabase.from('v_assessments_public').select('*').order('created_at', { ascending:false }).limit(500)
+      ]);
+      if (appsErrRes) throw appsErrRes;
+      if (assessErrRes) throw assessErrRes;
+      APPS = apps || [];
+      ASSESS = assessments || [];
+
+      // Neueste je App
+      const latestByApp = new Map();
+      ASSESS.forEach(a => { if (!latestByApp.has(a.app_id)) latestByApp.set(a.app_id, a); });
+      const latestPerApp = Array.from(latestByApp.values())
+        .sort((a,b)=> new Date(b.created_at)-new Date(a.created_at))
+        .slice(0, 100);
+
+      function renderCards(list){
+        cards.innerHTML = '';
+        if (!list.length) { latestEmpty.style.display='block'; countEl.textContent='0 Einträge'; return; }
+        latestEmpty.style.display='none';
+        list.forEach(a => {
+          const app = APPS.find(ap => ap.id===a.app_id) || {};
+          const el = document.createElement('div');
+          el.className = 'card';
+          el.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.25rem">
+              <div style="font-weight:600">${escapeHtml(app.name)||'Unbekannte App'}</div>
+              <span class="tag">${escapeHtml(app.category)||'–'}</span>
+            </div>
+            <div class="score" style="color:${gradeColor(a.grade)}">${Math.round(a.total_score||0)}%</div>
+            <div class="grade" style="color:${gradeColor(a.grade)}">Note ${a.grade||'–'}</div>
+            <div class="muted">${fmtDate(a.created_at)}</div>
+          `;
+          cards.appendChild(el);
+        });
+        countEl.textContent = `${list.length} Einträge`;
+      }
+      renderCards(latestPerApp);
+
+      // Live-Suche
+      searchInput.addEventListener('input', () => {
+        const q = (searchInput.value||'').trim().toLowerCase();
+        if (!q) return renderCards(latestPerApp);
+        const filtered = latestPerApp.filter(a => {
+          const app = APPS.find(ap => ap.id===a.app_id) || {};
+          return (app.name||'').toLowerCase().includes(q) || (app.category||'').toLowerCase().includes(q);
+        });
+        renderCards(filtered);
+      });
+
+      // Katalog
+      renderCatalog();
+
+    } catch (err) {
+      latestErr.textContent = 'Fehler beim Laden: ' + (err?.message||err);
+      latestErr.style.display='block';
+      appsErr.textContent = 'Fehler beim Laden: ' + (err?.message||err);
+      appsErr.style.display='block';
+    }
+
+    function renderCatalog(){
+      appsTbody.innerHTML = '';
+      if (!APPS.length){ appsEmpty.style.display='block'; return; }
+      appsEmpty.style.display='none';
+
+      APPS.forEach(a => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${escapeHtml(a.name)}</td>
+          <td>${escapeHtml(a.version)||'–'}</td>
+          <td>${escapeHtml(a.category)||'–'}</td>
+          <td style="color:${gradeColor(a.last_grade)}">${a.last_score!=null? Math.round(a.last_score)+'%':'–'}</td>
+          <td style="color:${gradeColor(a.last_grade)}">${a.last_grade||'–'}</td>
+          <td class="muted">${a.last_rated_at? fmtDate(a.last_rated_at) : '–'}</td>
+          <td ${isAdmin? '' : 'style="display:none"'} class="admin-actions">
+            <button class="btn" data-act="edit-app" data-id="${a.id}">Bearbeiten</button>
+            <button class="btn btn-danger" data-act="delete-app" data-id="${a.id}">Löschen</button>
+          </td>
+        `;
+        appsTbody.appendChild(tr);
+      });
+    }
+
+    // Admin: App bearbeiten/löschen
+    appsTbody.addEventListener('click', async (e) => {
+      const btn = e.target.closest('button[data-act]');
+      if (!btn) return;
+      if (!isAdmin) return alert('Nur Admins.');
+
+      const id = btn.dataset.id;
+      if (btn.dataset.act === 'edit-app') {
+        const { data: appRow, error } = await supabase.from('apps').select('*').eq('id', id).single();
+        if (error) return alert(error.message);
+        const name = prompt('App-Name:', appRow.name||'') ?? appRow.name;
+        const version = prompt('Version:', appRow.version||'') ?? appRow.version;
+        const category = prompt('Kategorie:', appRow.category||'') ?? appRow.category;
+        const upd = await supabase.from('apps').update({ name, version, category }).eq('id', id).select().single();
+        if (upd.error) return alert(upd.error.message);
+        // Lokale Liste aktualisieren
+        const idx = APPS.findIndex(x => x.id===id);
+        if (idx>=0) { APPS[idx] = { ...APPS[idx], name, version, category }; }
+        // Alphabetisch erneut sortieren
+        APPS.sort((x,y)=> (x.name||'').localeCompare(y.name||''));
+        renderCatalog();
+        alert('App gespeichert.');
+      }
+
+      if (btn.dataset.act === 'delete-app') {
+        if (!confirm('Diese App samt Bewertungen wirklich löschen?')) return;
+        const del = await supabase.from('apps').delete().eq('id', id);
+        if (del.error) return alert(del.error.message);
+        APPS = APPS.filter(x => x.id !== id);
+        renderCatalog();
+        alert('App gelöscht.');
+      }
+    });
+
+    // === Vorschläge ===
+    const canSuggest = () => {
+      const last = +localStorage.getItem('eazy:lastSuggestTs')||0;
+      return Date.now() - last > 30_000;
+    };
+    const markSuggest = () => localStorage.setItem('eazy:lastSuggestTs', String(Date.now()));
+
+    async function loadSuggestions(){
+      try{
+        const { data, error } = await supabase
+          .from('app_suggestions')
+          .select('id, app_name, store_url, note, status, created_at')
+          .order('created_at',{ascending:false})
+          .limit(20);
+        if (error) throw error;
+
+        sList.innerHTML = '';
+        if (!data?.length){ sEmpty.style.display='block'; return; }
+        sEmpty.style.display='none';
+
+        data.forEach(s => {
+          const card = document.createElement('div');
+          card.className = 'suggestion';
+
+          if (!isAdmin) {
+            // Gäste-Ansicht
+            card.innerHTML = `
+              <div class="row" style="justify-content:space-between">
+                <div style="font-weight:600">${escapeHtml(s.app_name)}</div>
+                <span class="tag">${escapeHtml(s.status || 'Neu')}</span>
+              </div>
+              ${s.store_url ? `<div style="margin-top:.25rem"><a class="tag" href="${escapeHtml(s.store_url)}" target="_blank" rel="noopener">Store</a></div>`:''}
+              ${s.note ? `<div class="muted" style="margin-top:.25rem">${escapeHtml(s.note)}</div>`:''}
+              <div class="muted" style="margin-top:.25rem">${fmtDate(s.created_at)}</div>
+            `;
+          } else {
+            // Admin/Superadmin – editierbar
+            const id = s.id;
+            card.innerHTML = `
+              <div class="row">
+                <input type="text" class="sa-name" placeholder="App-Name" value="${escapeHtml(s.app_name)}" style="flex:1;min-width:160px">
+                <select class="sa-status">
+                  <option value="Neu"${(s.status||'Neu')==='Neu'?' selected':''}>Neu</option>
+                  <option value="In Bearbeitung"${s.status==='In Bearbeitung'?' selected':''}>In Bearbeitung</option>
+                  <option value="Fertig"${s.status==='Fertig'?' selected':''}>Fertig</option>
+                </select>
+              </div>
+              <div class="row" style="margin-top:.4rem">
+                <input type="url" class="sa-url" placeholder="Store-Link" value="${escapeHtml(s.store_url||'')}" style="flex:1;min-width:200px">
+              </div>
+              <div class="row" style="margin-top:.4rem">
+                <textarea class="sa-note" placeholder="Notiz" style="width:100%">${escapeHtml(s.note||'')}</textarea>
+              </div>
+              <div class="row" style="margin-top:.5rem;justify-content:space-between">
+                <div class="muted">${fmtDate(s.created_at)}</div>
+                <div class="admin-actions">
+                  <button class="btn btn-primary sa-save">Speichern</button>
+                  <button class="btn btn-danger sa-del">Löschen</button>
+                </div>
+              </div>
+            `;
+
+            // Events
+            const $name = card.querySelector('.sa-name');
+            const $url  = card.querySelector('.sa-url');
+            const $note = card.querySelector('.sa-note');
+            const $status = card.querySelector('.sa-status');
+            const $save = card.querySelector('.sa-save');
+            const $del  = card.querySelector('.sa-del');
+
+            $save.addEventListener('click', async () => {
+              const payload = {
+                app_name: $name.value.trim(),
+                store_url: $url.value.trim() || null,
+                note: $note.value.trim() || null,
+                status: $status.value
+              };
+              try{
+                const { error } = await supabase
+                  .from('app_suggestions')
+                  .update(payload)
+                  .eq('id', id);
+                if (error) throw error;
+                alert('Vorschlag gespeichert.');
+                await loadSuggestions();
+              }catch(err){
+                alert('Speichern fehlgeschlagen: ' + (err?.message||err));
+              }
+            });
+
+            $del.addEventListener('click', async () => {
+              if (!confirm('Vorschlag wirklich löschen?')) return;
+              try{
+                const { error } = await supabase
+                  .from('app_suggestions')
+                  .delete()
+                  .eq('id', id);
+                if (error) throw error;
+                alert('Vorschlag gelöscht.');
+                await loadSuggestions();
+              }catch(err){
+                alert('Löschen fehlgeschlagen: ' + (err?.message||err));
+              }
+            });
+          }
+
+          sList.appendChild(card);
+        });
+      }catch(err){
+        sErr.textContent = 'Fehler beim Laden der Vorschläge: ' + (err?.message||err);
+        sErr.style.display='block';
+      }
+    }
+    await loadSuggestions();
+
+    // Vorschlag senden (öffentlich)
+    sForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      sMsg.textContent = '';
+
+      const name = sName.value.trim();
+      const url  = sUrl.value.trim();
+      const note = sNote.value.trim();
+
+      if (!name){ sMsg.textContent = 'Bitte einen App-Namen angeben.'; return; }
+      const last = +localStorage.getItem('eazy:lastSuggestTs')||0;
+      if (Date.now() - last <= 30_000){ sMsg.textContent = 'Bitte warte kurz, bevor du erneut sendest.'; return; }
+
+      try{
+        const { error } = await supabase.from('app_suggestions')
+          .insert({ app_name: name, store_url: url || null, note: note || null, status: 'Neu' });
+        if (error) throw error;
+
+        localStorage.setItem('eazy:lastSuggestTs', String(Date.now()));
+        sForm.reset();
+        sMsg.textContent = 'Danke! Vorschlag gesendet.';
+        await loadSuggestions();
+      }catch(err){
+        sMsg.textContent = 'Senden fehlgeschlagen: ' + (err?.message||err);
+      }
+    });
+  </script>
+</body>
+</html>
