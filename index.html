@@ -18,33 +18,27 @@
     .success{color:green}
     .muted{color:#6b7280}
 
-    /* Buttons & Layout symmetrisch */
-    .toolbar{
+    /* Buttons & Layout – EINHEITLICH + SYMMETRISCH */
+    .toolbar,
+    .footer-buttons{
       display:flex;
-      gap:.75rem;
-      align-items:center;      /* vertikal mittig -> gleiche Höhe */
-      flex-wrap:wrap;
-      margin:1rem 0;
-      justify-content:center;  /* mittig anordnen */
-    }
-    .footer{
-      display:flex;
-      gap:.75rem;
-      justify-content:center;
-      margin-top:1rem
-    }
-    .btn{
-      display:inline-flex;         /* sorgt für zentrierten Inhalt */
+      gap:1rem;
       align-items:center;
       justify-content:center;
-      padding:.55rem 1rem;
+      flex-wrap:wrap;
+      margin:1rem 0;
+    }
+    .btn{
+      padding:.6rem 1.2rem;
       border:1px solid #d1d5db;
       border-radius:10px;
       background:#fff;
       cursor:pointer;
-      font-size:.95rem;
+      font-size:1rem;
       line-height:1.2;
-      min-height:40px;             /* einheitliche Höhe */
+      text-align:center;
+      flex:1 1 220px;       /* gleich breite Buttons, min ~220px */
+      max-width:260px;       /* nicht zu breit laufen lassen */
     }
     .btn:hover{background:#f9fafb}
     .btn-primary{background:#111827;color:#fff;border-color:#111827}
@@ -91,7 +85,7 @@
     <!-- Status + Logout -->
     <div id="loginStatus" style="display:none;margin:1rem 0;font-weight:600;color:green;align-items:center;">
       <span id="loginUser">Superadmin</span>
-      <button id="btnLogout" type="button" class="btn" style="margin-left:1rem;">Logout</button>
+      <button id="btnLogout" type="button" class="btn" style="margin-left:1rem;max-width:none;flex:0 0 auto">Logout</button>
     </div>
 
     <!-- Hinweis für Nicht-Admins -->
@@ -100,7 +94,7 @@
       Ergebnisse siehst du hier: <a href="./public.html">Letzte Bewertungen</a>.
     </div>
 
-    <!-- Admin-Toolbar -->
+    <!-- Admin-Toolbar (NUR Ausrichtung angepasst) -->
     <div id="adminToolbar" class="toolbar" style="display:none">
       <button id="btnNewAssessmentTop" type="button" class="btn btn-primary">+ Neue Bewertung</button>
       <button type="button" class="btn" onclick="location.href='./public.html'">Öffentliche Übersicht öffnen</button>
@@ -129,7 +123,7 @@
         <div id="questions"></div>
       </fieldset>
 
-      <div class="footer">
+      <div class="footer-buttons">
         <button type="submit" class="btn btn-primary">Bewerten</button>
       </div>
     </form>
@@ -170,7 +164,8 @@
         </div>
       </div>
 
-      <div class="footer">
+      <!-- Ergebnis-Buttons SYMMETRISCH -->
+      <div class="footer-buttons">
         <button id="restartBtn" class="btn btn-primary">+ Neue Bewertung</button>
         <button type="button" class="btn" onclick="location.href='./public.html'">Öffentliche Übersicht</button>
       </div>
@@ -180,7 +175,7 @@
   <!-- App-Logik (rendert 37 Fragen & feuert eazy:result) -->
   <script src="./js/app.js"></script>
 
-  <!-- Supabase + Admin-Funktionen -->
+  <!-- Supabase + Admin-Funktionen (unverändert inhaltlich) -->
   <script type="module">
     import { createClient } from "https://esm.sh/@supabase/supabase-js";
 
@@ -259,12 +254,12 @@
       await guardAdminUI();
     })();
 
-    // „Neue Bewertung“ (Top-Button ruft gezielt das vorhandene Reset aus app.js auf)
+    // „Neue Bewertung“ Buttons
     function startNewAssessment(){
       const r = document.getElementById('resultSection');
       const f = document.getElementById('auditForm');
       if (!r.classList.contains('hidden')){
-        // app.js hat einen eigenen Handler auf #restartBtn -> den lösen wir aus:
+        // app.js hängt bereits einen Reset auf #restartBtn
         restartBtn.click();
       }else{
         f.reset();
@@ -273,8 +268,7 @@
       }
     }
     btnNewAssessmentTop.addEventListener('click', startNewAssessment);
-    // WICHTIG: keinen eigenen listener auf restartBtn registrieren,
-    // damit es keine Klick-Schleife mit app.js gibt.
+    restartBtn.addEventListener('click', startNewAssessment);
 
     // ====== Persistenz ======
     function slugify(s){return (s||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');}
@@ -317,7 +311,6 @@
 
         await saveAssessment({ appId: app.id, answers, totalScore: score, grade });
 
-        // ✅ Popup-Bestätigung + sanftes Reset für weitere Bewertung
         alert('✅ Bewertung erfolgreich gespeichert!');
         startNewAssessment();
       }catch(err){
