@@ -188,7 +188,7 @@
     try {
       const [{ data: apps, error: appsErrRes },
              { data: assessments, error: assessErrRes }] = await Promise.all([
-        supabase.from('v_app_catalog').select('*').order('name', { ascending:true }).limit(1000),
+        supabase.from('v_apps_public').select('*').order('name', { ascending:true }).limit(1000),
         supabase.from('v_assessments_public').select('*').order('created_at', { ascending:false }).limit(500)
       ]);
       if (appsErrRes) throw appsErrRes;
