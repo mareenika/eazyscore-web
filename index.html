@@ -37,8 +37,8 @@
       font-size:1rem;
       line-height:1.2;
       text-align:center;
-      flex:1 1 220px;       /* gleich breite Buttons, min ~220px */
-      max-width:260px;       /* nicht zu breit laufen lassen */
+      flex:1 1 220px;       /* gleich breite Buttons */
+      max-width:260px;      /* nicht unendlich wachsen */
     }
     .btn:hover{background:#f9fafb}
     .btn-primary{background:#111827;color:#fff;border-color:#111827}
@@ -94,7 +94,7 @@
       Ergebnisse siehst du hier: <a href="./public.html">Letzte Bewertungen</a>.
     </div>
 
-    <!-- Admin-Toolbar (NUR Ausrichtung angepasst) -->
+    <!-- Admin-Toolbar (nur Anzeige-Ausrichtung angepasst) -->
     <div id="adminToolbar" class="toolbar" style="display:none">
       <button id="btnNewAssessmentTop" type="button" class="btn btn-primary">+ Neue Bewertung</button>
       <button type="button" class="btn" onclick="location.href='./public.html'">Öffentliche Übersicht öffnen</button>
@@ -175,7 +175,7 @@
   <!-- App-Logik (rendert 37 Fragen & feuert eazy:result) -->
   <script src="./js/app.js"></script>
 
-  <!-- Supabase + Admin-Funktionen (unverändert inhaltlich) -->
+  <!-- Supabase + Admin-Funktionen -->
   <script type="module">
     import { createClient } from "https://esm.sh/@supabase/supabase-js";
 
