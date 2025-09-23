@@ -247,28 +247,57 @@
       appsErr.style.display='block';
     }
 
-    function renderCatalog(){
-      appsTbody.innerHTML = '';
-      if (!APPS.length){ appsEmpty.style.display='block'; return; }
-      appsEmpty.style.display='none';
+function renderCatalog(){
+  // Kopfspalte "Aktionen" nur zeigen, wenn Admin
+  if (typeof thActions !== 'undefined' && thActions) {
+    thActions.style.display = isAdmin ? 'table-cell' : 'none';
+  }
 
-      APPS.forEach(a => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${escapeHtml(a.name)}</td>
-          <td>${escapeHtml(a.version)||'–'}</td>
-          <td>${escapeHtml(a.category)||'–'}</td>
-          <td style="color:${gradeColor(a.last_grade)}">${a.last_score!=null? Math.round(a.last_score)+'%':'–'}</td>
-          <td style="color:${gradeColor(a.last_grade)}">${a.last_grade||'–'}</td>
-          <td class="muted">${a.last_rated_at? fmtDate(a.last_rated_at) : '–'}</td>
-          <td ${isAdmin? '' : 'style="display:none"'} class="admin-actions">
-            <button class="btn" data-act="edit-app" data-id="${a.id}">Bearbeiten</button>
-            <button class="btn btn-danger" data-act="delete-app" data-id="${a.id}">Löschen</button>
-          </td>
-        `;
-        appsTbody.appendChild(tr);
-      });
-    }
+  appsTbody.innerHTML = '';
+  if (!Array.isArray(APPS) || APPS.length === 0){
+    appsEmpty.style.display = 'block';
+    return;
+  }
+  appsEmpty.style.display = 'none';
+
+  const frag = document.createDocumentFragment();
+
+  APPS.forEach(a => {
+    const name     = escapeHtml(a?.name || 'Unbekannte App');
+    const version  = escapeHtml(a?.version || '–');
+    const category = escapeHtml(a?.category || '–');
+
+    const gradeRaw = (a?.last_grade || '').toUpperCase();
+    const grade    = gradeRaw || '–';
+    const color    = gradeColor(gradeRaw);
+
+    const scoreNum = Number.isFinite(a?.last_score) ? Math.round(a.last_score) : null;
+    const scoreTxt = scoreNum !== null ? `${scoreNum}%` : '–';
+
+    const ratedIso = a?.last_rated_at || '';
+    const ratedTxt = ratedIso ? fmtDate(ratedIso) : '–';
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${name}</td>
+      <td>${version}</td>
+      <td>${category}</td>
+      <td style="color:${color};text-align:right;font-variant-numeric:tabular-nums">${scoreTxt}</td>
+      <td style="color:${color}">${grade}</td>
+      <td class="muted" title="${ratedIso}">${ratedTxt}</td>
+      ${isAdmin ? `
+        <td class="admin-actions">
+          <button class="btn" data-act="edit-app" data-id="${a.id}">Bearbeiten</button>
+          <button class="btn btn-danger" data-act="delete-app" data-id="${a.id}">Löschen</button>
+        </td>
+      ` : ``}
+    `;
+    frag.appendChild(tr);
+  });
+
+  appsTbody.appendChild(frag);
+}
+
 
     // Admin: App bearbeiten/löschen
     appsTbody.addEventListener('click', async (e) => {
