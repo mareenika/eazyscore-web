@@ -38,10 +38,10 @@
     /* Gleich breite Admin-Aktionsbuttons (Speichern/Löschen) */
     .admin-actions{display:flex;gap:.5rem;justify-content:flex-end}
     .admin-actions .btn{
-      flex:1 1 140px;      /* gleiche Breite erzwingen */
+      flex:1 1 140px;
       min-width:140px;
       max-width:160px;
-      padding:.55rem .8rem; /* gleiche Höhe */
+      padding:.55rem .8rem;
       font-size:.95rem;
     }
   </style>
@@ -186,17 +186,45 @@
     let ASSESS = [];
 
     try {
-      const [{ data: apps, error: appsErrRes },
-             { data: assessments, error: assessErrRes }] = await Promise.all([
-        supabase.from('v_apps_public').select('*').order('name', { ascending:true }).limit(1000),
-        supabase.from('v_assessments_public').select('*').order('created_at', { ascending:false }).limit(500)
+      const [
+        { data: apps,       error: appsErrRes },
+        { data: scores,     error: scoresErrRes },
+        { data: assessments,error: assessErrRes }
+      ] = await Promise.all([
+        // Stammdaten (öffentlich)
+        supabase.from('v_apps_public')
+          .select('id, name, version, category, created_at')
+          .order('name', { ascending:true })
+          .limit(1000),
+
+        // Letzter Score/Note/Zeitpunkt je App
+        supabase.from('app_scores')
+          .select('app_id, last_score, last_grade, last_rated_at'),
+
+        // Für "Letzte Bewertungen" Karten
+        supabase.from('v_assessments_public')
+          .select('*')
+          .order('created_at', { ascending:false })
+          .limit(500)
       ]);
+
       if (appsErrRes) throw appsErrRes;
+      if (scoresErrRes) throw scoresErrRes;
       if (assessErrRes) throw assessErrRes;
-      APPS = apps || [];
-      ASSESS = assessments || [];
+
+      // Scores an Apps mergen
+      const scoreById = Object.create(null);
+      (scores || []).forEach(s => { scoreById[s.app_id] = s; });
+
+      APPS = (apps || []).map(a => ({
+        ...a,
+        last_score:    scoreById[a.id]?.last_score    ?? null,
+        last_grade:    scoreById[a.id]?.last_grade    ?? null,
+        last_rated_at: scoreById[a.id]?.last_rated_at ?? null
+      }));
 
       // Neueste je App
+      ASSESS = assessments || [];
       const latestByApp = new Map();
       ASSESS.forEach(a => { if (!latestByApp.has(a.app_id)) latestByApp.set(a.app_id, a); });
       const latestPerApp = Array.from(latestByApp.values())
@@ -247,57 +275,54 @@
       appsErr.style.display='block';
     }
 
-function renderCatalog(){
-  // Kopfspalte "Aktionen" nur zeigen, wenn Admin
-  if (typeof thActions !== 'undefined' && thActions) {
-    thActions.style.display = isAdmin ? 'table-cell' : 'none';
-  }
+    function renderCatalog(){
+      // Kopfspalte "Aktionen" nur zeigen, wenn Admin
+      if (thActions) thActions.style.display = isAdmin ? 'table-cell' : 'none';
 
-  appsTbody.innerHTML = '';
-  if (!Array.isArray(APPS) || APPS.length === 0){
-    appsEmpty.style.display = 'block';
-    return;
-  }
-  appsEmpty.style.display = 'none';
+      appsTbody.innerHTML = '';
+      if (!Array.isArray(APPS) || APPS.length === 0){
+        appsEmpty.style.display = 'block';
+        return;
+      }
+      appsEmpty.style.display = 'none';
 
-  const frag = document.createDocumentFragment();
+      const frag = document.createDocumentFragment();
 
-  APPS.forEach(a => {
-    const name     = escapeHtml(a?.name || 'Unbekannte App');
-    const version  = escapeHtml(a?.version || '–');
-    const category = escapeHtml(a?.category || '–');
+      APPS.forEach(a => {
+        const name     = escapeHtml(a?.name || 'Unbekannte App');
+        const version  = escapeHtml(a?.version || '–');
+        const category = escapeHtml(a?.category || '–');
 
-    const gradeRaw = (a?.last_grade || '').toUpperCase();
-    const grade    = gradeRaw || '–';
-    const color    = gradeColor(gradeRaw);
+        const gradeRaw = (a?.last_grade || '').toUpperCase();
+        const grade    = gradeRaw || '–';
+        const color    = gradeColor(gradeRaw);
 
-    const scoreNum = Number.isFinite(a?.last_score) ? Math.round(a.last_score) : null;
-    const scoreTxt = scoreNum !== null ? `${scoreNum}%` : '–';
+        const scoreNum = Number.isFinite(a?.last_score) ? Math.round(a.last_score) : null;
+        const scoreTxt = scoreNum !== null ? `${scoreNum}%` : '–';
 
-    const ratedIso = a?.last_rated_at || '';
-    const ratedTxt = ratedIso ? fmtDate(ratedIso) : '–';
+        const ratedIso = a?.last_rated_at || '';
+        const ratedTxt = ratedIso ? fmtDate(ratedIso) : '–';
 
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${name}</td>
-      <td>${version}</td>
-      <td>${category}</td>
-      <td style="color:${color};text-align:right;font-variant-numeric:tabular-nums">${scoreTxt}</td>
-      <td style="color:${color}">${grade}</td>
-      <td class="muted" title="${ratedIso}">${ratedTxt}</td>
-      ${isAdmin ? `
-        <td class="admin-actions">
-          <button class="btn" data-act="edit-app" data-id="${a.id}">Bearbeiten</button>
-          <button class="btn btn-danger" data-act="delete-app" data-id="${a.id}">Löschen</button>
-        </td>
-      ` : ``}
-    `;
-    frag.appendChild(tr);
-  });
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${name}</td>
+          <td>${version}</td>
+          <td>${category}</td>
+          <td style="color:${color};text-align:right;font-variant-numeric:tabular-nums">${scoreTxt}</td>
+          <td style="color:${color}">${grade}</td>
+          <td class="muted" title="${ratedIso}">${ratedTxt}</td>
+          ${isAdmin ? `
+            <td class="admin-actions">
+              <button class="btn" data-act="edit-app" data-id="${a.id}">Bearbeiten</button>
+              <button class="btn btn-danger" data-act="delete-app" data-id="${a.id}">Löschen</button>
+            </td>
+          ` : ``}
+        `;
+        frag.appendChild(tr);
+      });
 
-  appsTbody.appendChild(frag);
-}
-
+      appsTbody.appendChild(frag);
+    }
 
     // Admin: App bearbeiten/löschen
     appsTbody.addEventListener('click', async (e) => {
