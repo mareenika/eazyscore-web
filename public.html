@@ -192,8 +192,8 @@
         { data: assessments,error: assessErrRes }
       ] = await Promise.all([
         // Stammdaten (öffentlich)
-        supabase.from('v_apps_public')
-          .select('id, name, version, category, created_at')
+        supabase.from('v_apps_catalog')
+          .select('id, name, version, category, last_score, last_grade, created_at')
           .order('name', { ascending:true })
           .limit(1000),
 
