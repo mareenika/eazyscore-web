@@ -188,18 +188,13 @@
     try {
       const [
         { data: apps,       error: appsErrRes },
-        { data: scores,     error: scoresErrRes },
         { data: assessments,error: assessErrRes }
       ] = await Promise.all([
-        // Stammdaten (öffentlich)
-        supabase.from('v_apps_catalog')
-          .select('id, name, version, category, last_score, last_grade, created_at')
+        // *** HIER: nur die eine View verwenden ***
+        supabase.from('v_app_catalog')
+          .select('*') // enthält name, version, category, last_score, last_grade, last_rated_at ...
           .order('name', { ascending:true })
           .limit(1000),
-
-        // Letzter Score/Note/Zeitpunkt je App
-        supabase.from('app_scores')
-          .select('app_id, last_score, last_grade, last_rated_at'),
 
         // Für "Letzte Bewertungen" Karten
         supabase.from('v_assessments_public')
@@ -209,22 +204,12 @@
       ]);
 
       if (appsErrRes) throw appsErrRes;
-      if (scoresErrRes) throw scoresErrRes;
       if (assessErrRes) throw assessErrRes;
 
-      // Scores an Apps mergen
-      const scoreById = Object.create(null);
-      (scores || []).forEach(s => { scoreById[s.app_id] = s; });
-
-      APPS = (apps || []).map(a => ({
-        ...a,
-        last_score:    scoreById[a.id]?.last_score    ?? null,
-        last_grade:    scoreById[a.id]?.last_grade    ?? null,
-        last_rated_at: scoreById[a.id]?.last_rated_at ?? null
-      }));
+      APPS = apps || [];
+      ASSESS = assessments || [];
 
       // Neueste je App
-      ASSESS = assessments || [];
       const latestByApp = new Map();
       ASSESS.forEach(a => { if (!latestByApp.has(a.app_id)) latestByApp.set(a.app_id, a); });
       const latestPerApp = Array.from(latestByApp.values())
@@ -340,7 +325,7 @@
         const upd = await supabase.from('apps').update({ name, version, category }).eq('id', id).select().single();
         if (upd.error) return alert(upd.error.message);
         // Lokale Liste aktualisieren
-        const idx = APPS.findIndex(x => x.id===id);
+        const idx = APPS.findIndex(x => String(x.id)===String(id));
         if (idx>=0) { APPS[idx] = { ...APPS[idx], name, version, category }; }
         // Alphabetisch erneut sortieren
         APPS.sort((x,y)=> (x.name||'').localeCompare(y.name||''));
@@ -352,7 +337,7 @@
         if (!confirm('Diese App samt Bewertungen wirklich löschen?')) return;
         const del = await supabase.from('apps').delete().eq('id', id);
         if (del.error) return alert(del.error.message);
-        APPS = APPS.filter(x => x.id !== id);
+        APPS = APPS.filter(x => String(x.id) !== String(id));
         renderCatalog();
         alert('App gelöscht.');
       }
@@ -467,7 +452,7 @@
           sList.appendChild(card);
         });
       }catch(err){
-        sErr.textContent = 'Fehler beim Laden der Vorschläge: ' + (err?.message||err);
+        sErr.textContent = 'Fehler beim Laden der Vorschläge: ' + (err?.message||err));
         sErr.style.display='block';
       }
     }
