@@ -1,1 +1,14 @@
+{
+  "name": "eazy-score",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "jest --passWithNoTests",
+    "test:watch": "jest --watch",
+    "test:ci": "jest --ci --coverage"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}
 
